@@ -1,0 +1,81 @@
+# Re = 1e5 counterpart of openlb_examples/bump2d_turbulent.cpp.
+#
+# Mesh h = 1/16 -> velocity-node spacing h_eff = h/2 = 1/32, matching that run's
+# physDeltaX = 1/N = 1/30. The coarser mesh at the *higher* Reynolds number is
+# deliberate and mirrors OpenLB; see README.md.
+#
+# There is no turbulence model here. As in the OpenLB run (whose lattice
+# viscosity is 6e-6, i.e. essentially zero), this is an under-resolved
+# calculation held together by numerical dissipation -- the interior
+# Lax-Friedrichs flux plays the role of OpenLB's Smagorinsky term. Expect
+# qualitative agreement, not pointwise.
+
+main:
+  mode: single_run
+  use_rom: false
+  solver: unsteady-ns
+
+mesh:
+  type: submesh
+  filename: meshes/bump2d.h0.0625.msh.mfem
+  uniform_refinement: 0
+
+domain-decomposition:
+  type: none          # monolithic FOM: one mesh, one subdomain
+
+discretization:
+  order: 1            # Q2 velocity / Q1 pressure
+  # Required here: this puts the Lax-Friedrichs flux on interior faces, which is
+  # the only stabilization in the scheme at this Reynolds number. Do not disable.
+  full-discrete-galerkin: true
+
+navier-stokes:
+  operator-type: lf   # UnsteadyNSSolver only supports the Lax-Friedrichs flux
+  zeta: 1.0
+
+stokes:
+  nu: 1.0e-5          # overwritten by single_run/backward_facing_step/nu; kept in sync
+
+solver:
+  direct_solve: true
+  use_restart: false
+
+time-integration:
+  # Nominal CFL limit on this mesh is 2.1e-3; halved for margin, since the
+  # high-Re run has steeper near-wall gradients and local excursions above
+  # u_max = 3. If it runs stably, 2.0e-3 halves the wall time.
+  timestep_size: 1.0e-3   # CFL ~ 0.10
+  number_of_timesteps: 100000   # 100 physical time = OpenLB maxPhysT
+  bdf_order: 1
+  report_interval: 100
+
+visualization:
+  enabled: true
+  unified_paraview: true
+  time_interval: 200      # every 0.2 physical time, as OpenLB writes its vtm files
+  file_path:
+    directory: paraview
+    prefix: bump2d_Re1e5
+
+save_solution:
+  enabled: true
+  restart_interval: 1000  # every 1.0 physical time, as OpenLB checkpoints
+  file_path:
+    directory: restart
+    prefix: bump2d_Re1e5
+
+parameterized_problem:
+  name: backward_facing_step
+
+single_run:
+  backward_facing_step:
+    nu: 1.0e-5    # Re = charL * charU / nu = 1 * 1 / 1e-5 = 1e5
+    y0: 0.0       # inflow spans the full channel height
+    y1: 1.5
+    u0: 1.5       # Poiseuille peak -> mean 1.0 = OpenLB charPhysVelocity
+    # Transverse inlet perturbation, off by default. Try amp0: 0.01, ky0: 1.0,
+    # freq0: 0.5 to trip the flow if it does not become unsteady on its own.
+    amp0: 0.0
+    ky0: 0.0
+    freq0: 0.0
+    t_offset0: 0.0

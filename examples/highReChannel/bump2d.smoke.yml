@@ -1,0 +1,68 @@
+# Short smoke test: 200 steps on the coarse mesh at Re = 500. Run this first.
+#
+# It exercises the whole path -- mesh load, boundary-attribute mapping, MUMPS
+# factorization, time integration, paraview output -- in well under a minute.
+#
+# What to watch: the CFL value reported every 20 steps. It should settle near
+# 0.19. If it is far off, the u_max ~ 3 estimate behind every timestep_size in
+# this directory is wrong, and the production configs should be rescaled by the
+# observed ratio before launching. See README.md.
+
+main:
+  mode: single_run
+  use_rom: false
+  solver: unsteady-ns
+
+mesh:
+  type: submesh
+  filename: meshes/bump2d.h0.0625.msh.mfem
+  uniform_refinement: 0
+
+domain-decomposition:
+  type: none
+
+discretization:
+  order: 1
+  full-discrete-galerkin: true
+
+navier-stokes:
+  operator-type: lf
+  zeta: 1.0
+
+stokes:
+  nu: 2.0e-3
+
+solver:
+  direct_solve: true
+  use_restart: false
+
+time-integration:
+  timestep_size: 2.0e-3   # CFL ~ 0.19 on h = 1/16 at u_max = 3
+  number_of_timesteps: 200
+  bdf_order: 1
+  report_interval: 20
+
+visualization:
+  enabled: true
+  unified_paraview: true
+  time_interval: 20
+  file_path:
+    directory: paraview
+    prefix: bump2d_smoke
+
+save_solution:
+  enabled: false
+
+parameterized_problem:
+  name: backward_facing_step
+
+single_run:
+  backward_facing_step:
+    nu: 2.0e-3
+    y0: 0.0
+    y1: 1.5
+    u0: 1.5
+    amp0: 0.0
+    ky0: 0.0
+    freq0: 0.0
+    t_offset0: 0.0

@@ -1,0 +1,72 @@
+# Re = 500 counterpart of openlb_examples/bump2d_laminar.cpp.
+#
+# Mesh h = 1/32 -> velocity-node spacing h_eff = h/2 = 1/64, matching that run's
+# physDeltaX = 1/N = 1/60. See README.md for the full mapping.
+
+main:
+  mode: single_run
+  use_rom: false
+  solver: unsteady-ns
+
+mesh:
+  type: submesh
+  filename: meshes/bump2d.h0.03125.msh.mfem
+  uniform_refinement: 0
+
+domain-decomposition:
+  type: none          # monolithic FOM: one mesh, one subdomain
+
+discretization:
+  order: 1            # Q2 velocity / Q1 pressure
+  # Puts the Lax-Friedrichs flux on interior faces. Not strictly needed at this
+  # Reynolds number (cell Reynolds number ~ 8); set to false to fall back on
+  # continuous Taylor-Hood and cut ~760k DOFs to ~310k if MUMPS runs out of memory.
+  full-discrete-galerkin: true
+
+navier-stokes:
+  operator-type: lf   # UnsteadyNSSolver only supports the Lax-Friedrichs flux
+  zeta: 1.0
+
+stokes:
+  nu: 2.0e-3          # overwritten by single_run/backward_facing_step/nu; kept in sync
+
+solver:
+  direct_solve: true
+  use_restart: false
+
+time-integration:
+  timestep_size: 1.0e-3   # CFL = dt * u_max / h_eff ~ 0.19 at u_max = 3
+  number_of_timesteps: 100000   # 100 physical time = OpenLB maxPhysT
+  bdf_order: 1
+  report_interval: 1
+
+visualization:
+  enabled: true
+  unified_paraview: true
+  time_interval: 200      # every 0.2 physical time, as OpenLB writes its vtm files
+  file_path:
+    directory: paraview
+    prefix: bump2d_Re500
+
+save_solution:
+  enabled: true
+  restart_interval: 1000  # every 1.0 physical time, as OpenLB checkpoints
+  file_path:
+    directory: restart
+    prefix: bump2d_Re500
+
+parameterized_problem:
+  name: backward_facing_step
+
+single_run:
+  backward_facing_step:
+    nu: 2.0e-3    # Re = charL * charU / nu = 1 * 1 / 2e-3 = 500
+    y0: 0.0       # inflow spans the full channel height
+    y1: 1.5
+    u0: 1.5       # Poiseuille peak -> mean 1.0 = OpenLB charPhysVelocity
+    # Transverse inlet perturbation, off by default. Useful to trip the flow if
+    # it stays stubbornly steady.
+    amp0: 0.0
+    ky0: 0.0
+    freq0: 0.0
+    t_offset0: 0.0
