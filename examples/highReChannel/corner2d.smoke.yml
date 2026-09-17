@@ -1,12 +1,15 @@
-# Short smoke test: 200 steps on the coarse mesh at Re = 500. Run this first.
+# Short smoke test: 200 steps on the coarse corner2d mesh at Re = 500.
 #
 # It exercises the whole path -- mesh load, boundary-attribute mapping, MUMPS
 # factorization, time integration, paraview output -- in well under a minute.
 #
-# What to watch: the CFL value reported every 20 steps. It should settle near
-# 0.19. If it is far off, the u_max ~ 3 estimate behind every timestep_size in
-# this directory is wrong, and the production configs should be rescaled by the
-# observed ratio before launching. See README.md.
+# What to watch: the CFL reported every 20 steps. It should settle near 0.16.
+# Pay particular attention to the FIRST few steps: backward_facing_step's IC
+# lays a jet at y in [4,5] that runs into step2's face at x = 6, and that
+# impulsive stop happens on step 1. A large spike there is the signal to run
+# this case with --problem channel_flow instead, which starts from rest.
+#
+#   ./run_production.sh corner2d.smoke --problem channel_flow --dry-run
 
 main:
   mode: single_run
@@ -15,7 +18,7 @@ main:
 
 mesh:
   type: submesh
-  filename: meshes/bump2d.h0.0625.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
+  filename: meshes/corner2d.h0.0625.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
   uniform_refinement: 0
 
 domain-decomposition:
@@ -37,7 +40,7 @@ solver:
   use_restart: false
 
 time-integration:
-  timestep_size: 2.0e-3   # CFL ~ 0.19 on h = 1/16 at u_max = 3
+  timestep_size: 2.0e-3   # CFL ~ 0.16 on h = 1/16 at u_max = 2.5
   number_of_timesteps: 200
   bdf_order: 1
   report_interval: 20
@@ -48,7 +51,7 @@ visualization:
   time_interval: 20
   file_path:
     directory: paraview
-    prefix: bump2d_smoke
+    prefix: corner2d_smoke
 
 save_solution:
   enabled: false
@@ -57,12 +60,12 @@ parameterized_problem:
   name: backward_facing_step
 
 # Only the block named by parameterized_problem/name is read, so both can live
-# here. Swap with: ./run_production.sh bump2d.smoke --problem channel_flow
+# here. Swap with: ./run_production.sh corner2d.smoke --problem channel_flow
 single_run:
   backward_facing_step:
     nu: 2.0e-3
-    y0: 0.0
-    y1: 1.5
+    y0: 4.0
+    y1: 5.0
     u0: 1.5
     amp0: 0.0
     ky0: 0.0
@@ -70,6 +73,6 @@ single_run:
     t_offset0: 0.0
   channel_flow:
     nu: 2.0e-3
-    L: 1.5        # duct height   = y1 - y0
-    x0: 0.75      # duct centre   = (y0 + y1) / 2
+    L: 1.0        # duct height   = y1 - y0
+    x0: 4.5       # duct centre   = (y0 + y1) / 2
     U: 1.5        # peak velocity = u0

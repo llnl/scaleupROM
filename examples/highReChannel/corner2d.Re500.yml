@@ -1,14 +1,18 @@
-# Re = 500 counterpart of openlb_examples/bump2d_laminar.cpp.
+# Re = 500 counterpart of openlb_examples/corner2d_laminar.cpp.
 #
+# Elbow: inlet [0,1]x[4,5] -> chamber [1,6]x[0,5] -> outlet [6,11]x[0,1].
 # Mesh h = 1/32 -> velocity-node spacing h_eff = h/2 = 1/64, matching that run's
 # physDeltaX = 1/N = 1/60. See README.md for the full mapping.
 #
-# To start from rest instead (channel_flow, as OpenLB does), change BOTH:
+# NOTE ON THE INITIAL CONDITION. Unlike bump2d, backward_facing_step's IC is not
+# consistent with this geometry: with y0=4, y1=5 it lays a jet across x in [0,6]
+# at y in [4,5], and that jet runs straight into step2's face at x = 6, violating
+# no-penetration. It is resolved in the first (implicit) solve, but expect a
+# large first-step pressure spike. channel_flow starts from rest instead, which
+# is both consistent here and closer to what OpenLB does -- change BOTH:
 #   parameterized_problem/name -> channel_flow
-#   mesh/filename              -> meshes/bump2d.h0.03125.chan.msh.mfem
-# or just:  ./run_production.sh bump2d.Re500 --problem channel_flow
-# The two problems disagree about what boundary tag 2 means, which is why the
-# mesh has to change too. The inflow profile itself is identical either way.
+#   mesh/filename              -> meshes/corner2d.h0.03125.chan.msh.mfem
+# or just:  ./run_production.sh corner2d.Re500 --problem channel_flow
 
 main:
   mode: single_run
@@ -17,7 +21,7 @@ main:
 
 mesh:
   type: submesh
-  filename: meshes/bump2d.h0.03125.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
+  filename: meshes/corner2d.h0.03125.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
   uniform_refinement: 0
 
 domain-decomposition:
@@ -27,7 +31,7 @@ discretization:
   order: 1            # Q2 velocity / Q1 pressure
   # Puts the Lax-Friedrichs flux on interior faces. Not strictly needed at this
   # Reynolds number (cell Reynolds number ~ 8); set to false to fall back on
-  # continuous Taylor-Hood and cut ~760k DOFs to ~310k if MUMPS runs out of memory.
+  # continuous Taylor-Hood and cut ~700k DOFs to ~280k if MUMPS runs out of memory.
   full-discrete-galerkin: true
 
 navier-stokes:
@@ -35,17 +39,20 @@ navier-stokes:
   zeta: 1.0
 
 stokes:
-  nu: 2.0e-3          # overwritten by single_run/backward_facing_step/nu; kept in sync
+  nu: 2.0e-3          # overwritten by the single_run value below; kept in sync
 
 solver:
   direct_solve: true
   use_restart: false
 
 time-integration:
-  timestep_size: 1.0e-3   # CFL = dt * u_max / h_eff ~ 0.19 at u_max = 3
+  # u_max ~ 2.5 here: no area contraction (inlet and outlet are both height 1),
+  # so the bulk peak stays ~1.5, with margin for the convex corners at (1,4)
+  # and (6,1). CFL = dt * u_max / h_eff ~ 0.16.
+  timestep_size: 1.0e-3
   number_of_timesteps: 100000   # 100 physical time = OpenLB maxPhysT
   bdf_order: 1
-  report_interval: 1
+  report_interval: 100
 
 visualization:
   enabled: true
@@ -53,14 +60,14 @@ visualization:
   time_interval: 200      # every 0.2 physical time, as OpenLB writes its vtm files
   file_path:
     directory: paraview
-    prefix: bump2d_Re500
+    prefix: corner2d_Re500
 
 save_solution:
   enabled: true
   restart_interval: 1000  # every 1.0 physical time, as OpenLB checkpoints
   file_path:
     directory: restart
-    prefix: bump2d_Re500
+    prefix: corner2d_Re500
 
 parameterized_problem:
   name: backward_facing_step
@@ -70,11 +77,10 @@ parameterized_problem:
 single_run:
   backward_facing_step:
     nu: 2.0e-3    # Re = charL * charU / nu = 1 * 1 / 2e-3 = 500
-    y0: 0.0       # inflow spans the full channel height
-    y1: 1.5
+    y0: 4.0       # inlet duct spans y in [4, 5]
+    y1: 5.0
     u0: 1.5       # Poiseuille peak -> mean 1.0 = OpenLB charPhysVelocity
-    # Transverse inlet perturbation, off by default. Useful to trip the flow if
-    # it stays stubbornly steady.
+    # Transverse inlet perturbation, off by default.
     amp0: 0.0
     ky0: 0.0
     freq0: 0.0
@@ -83,6 +89,6 @@ single_run:
     # Same Poiseuille inflow as above, reparameterized; the difference is that
     # ChannelFlow sets no ic_ptr, so UnsteadyNSSolver starts from rest.
     nu: 2.0e-3
-    L: 1.5        # duct height   = y1 - y0
-    x0: 0.75      # duct centre   = (y0 + y1) / 2
+    L: 1.0        # duct height   = y1 - y0
+    x0: 4.5       # duct centre   = (y0 + y1) / 2
     U: 1.5        # peak velocity = u0

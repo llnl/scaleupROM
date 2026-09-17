@@ -1,5 +1,6 @@
-# Re = 1e5 counterpart of openlb_examples/bump2d_turbulent.cpp.
+# Re = 1e5 counterpart of openlb_examples/corner2d_turbulent.cpp.
 #
+# Elbow: inlet [0,1]x[4,5] -> chamber [1,6]x[0,5] -> outlet [6,11]x[0,1].
 # Mesh h = 1/16 -> velocity-node spacing h_eff = h/2 = 1/32, matching that run's
 # physDeltaX = 1/N = 1/30. The coarser mesh at the *higher* Reynolds number is
 # deliberate and mirrors OpenLB; see README.md.
@@ -10,12 +11,14 @@
 # Lax-Friedrichs flux plays the role of OpenLB's Smagorinsky term. Expect
 # qualitative agreement, not pointwise.
 #
-# To start from rest instead (channel_flow, as OpenLB does), change BOTH:
+# NOTE ON THE INITIAL CONDITION. backward_facing_step's IC is not consistent
+# with this geometry: it lays a jet across x in [0,6] at y in [4,5] that runs
+# into step2's face at x = 6. That impulsive stop is the riskiest moment of this
+# run -- if the early CFL spikes, switch to channel_flow, which starts from rest
+# (and is what OpenLB does) -- change BOTH:
 #   parameterized_problem/name -> channel_flow
-#   mesh/filename              -> meshes/bump2d.h0.0625.chan.msh.mfem
-# or just:  ./run_production.sh bump2d.Re1e5 --problem channel_flow
-# The two problems disagree about what boundary tag 2 means, which is why the
-# mesh has to change too. The inflow profile itself is identical either way.
+#   mesh/filename              -> meshes/corner2d.h0.0625.chan.msh.mfem
+# or just:  ./run_production.sh corner2d.Re1e5 --problem channel_flow
 
 main:
   mode: single_run
@@ -24,7 +27,7 @@ main:
 
 mesh:
   type: submesh
-  filename: meshes/bump2d.h0.0625.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
+  filename: meshes/corner2d.h0.0625.bfs.msh.mfem   # .bfs tags: 1=inflow 2=wall 3=outflow
   uniform_refinement: 0
 
 domain-decomposition:
@@ -41,17 +44,16 @@ navier-stokes:
   zeta: 1.0
 
 stokes:
-  nu: 1.0e-5          # overwritten by single_run/backward_facing_step/nu; kept in sync
+  nu: 1.0e-5          # overwritten by the single_run value below; kept in sync
 
 solver:
   direct_solve: true
   use_restart: false
 
 time-integration:
-  # Nominal CFL limit on this mesh is 2.1e-3; halved for margin, since the
-  # high-Re run has steeper near-wall gradients and local excursions above
-  # u_max = 3. If it runs stably, 2.0e-3 halves the wall time.
-  timestep_size: 1.0e-3   # CFL ~ 0.10
+  # Nominal CFL limit on this mesh is 2.5e-3 at u_max = 2.5; halved for margin,
+  # as in bump2d.Re1e5. If it runs stably, 2.0e-3 halves the wall time.
+  timestep_size: 1.0e-3   # CFL ~ 0.08
   number_of_timesteps: 100000   # 100 physical time = OpenLB maxPhysT
   bdf_order: 1
   report_interval: 100
@@ -62,14 +64,14 @@ visualization:
   time_interval: 200      # every 0.2 physical time, as OpenLB writes its vtm files
   file_path:
     directory: paraview
-    prefix: bump2d_Re1e5
+    prefix: corner2d_Re1e5
 
 save_solution:
   enabled: true
   restart_interval: 1000  # every 1.0 physical time, as OpenLB checkpoints
   file_path:
     directory: restart
-    prefix: bump2d_Re1e5
+    prefix: corner2d_Re1e5
 
 parameterized_problem:
   name: backward_facing_step
@@ -79,8 +81,8 @@ parameterized_problem:
 single_run:
   backward_facing_step:
     nu: 1.0e-5    # Re = charL * charU / nu = 1 * 1 / 1e-5 = 1e5
-    y0: 0.0       # inflow spans the full channel height
-    y1: 1.5
+    y0: 4.0       # inlet duct spans y in [4, 5]
+    y1: 5.0
     u0: 1.5       # Poiseuille peak -> mean 1.0 = OpenLB charPhysVelocity
     # Transverse inlet perturbation, off by default. Try amp0: 0.01, ky0: 1.0,
     # freq0: 0.5 to trip the flow if it does not become unsteady on its own.
@@ -93,6 +95,6 @@ single_run:
     # ChannelFlow sets no ic_ptr, so UnsteadyNSSolver starts from rest. Note it
     # has no perturbation knobs, so there is no way to trip the flow with it.
     nu: 1.0e-5
-    L: 1.5        # duct height   = y1 - y0
-    x0: 0.75      # duct centre   = (y0 + y1) / 2
+    L: 1.0        # duct height   = y1 - y0
+    x0: 4.5       # duct centre   = (y0 + y1) / 2
     U: 1.5        # peak velocity = u0

@@ -6,6 +6,10 @@ file(COPY bump2d.smoke.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChanne
 file(COPY bump2d.Re500.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
 file(COPY bump2d.Re1e5.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
 
+file(COPY corner2d.smoke.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
+file(COPY corner2d.Re500.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
+file(COPY corner2d.Re1e5.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
+
 file(COPY README.md DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
 file(COPY generate_mesh.py DESTINATION ${CMAKE_BINARY_DIR}/examples/highReChannel)
 
