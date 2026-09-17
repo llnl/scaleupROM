@@ -31,6 +31,8 @@ protected:
    int report_interval = 0;
    // restart save interval
    int restart_interval = 0;
+   // output file for run metrics
+   std::string metrics_file = "metrics.h5";
 
    // BDFk/EXTk coefficients.
    /* use first order for now. */
@@ -114,14 +116,8 @@ private:
    void SetupInitialCondition(int &initial_step, double &time);
    void Step(double &time, int step);
 
-   void SanityCheck(const int step)
-   {
-      if (isnan(U_step->Min()) || isnan(U_step->Max()))
-      {
-         printf("Step : %d\n", step);
-         mfem_error("UnsteadyNSSolver: Solution blew up!!\n");
-      }
-   }
+   void SanityCheck(const int step, const double simulation_time);
+   void SaveMetrics(const bool converged, const double simulation_time);
    double ComputeCFL(const double dt);
    void SetTime(const double time);
 

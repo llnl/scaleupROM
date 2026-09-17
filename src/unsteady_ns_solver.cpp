@@ -25,6 +25,7 @@ UnsteadyNSSolver::UnsteadyNSSolver(TopologyHandler *input_topol_handler)
    dt = config.GetRequiredOption<double>("time-integration/timestep_size");
    time_order = config.GetOption<int>("time-integration/bdf_order", 1);
    report_interval = config.GetOption<int>("time-integration/report_interval", 0);
+   metrics_file = config.GetOption<std::string>("metrics/filename", "metrics.h5");
 
    if (save_sol)
       restart_interval = config.GetOption<int>("save_solution/restart_interval", 0);
@@ -92,6 +93,9 @@ bool UnsteadyNSSolver::Solve(SampleGenerator *sample_generator)
 
    SetupInitialCondition(initial_step, time);
 
+   /* physical time at which this run starts, nonzero when restarting */
+   const double initial_time = time;
+
    int sample_interval = config.GetOption<int>("sample_generation/time-integration/sample_interval", 0);
    int bootstrap = config.GetOption<int>("sample_generation/time-integration/bootstrap", 0);
 
@@ -111,7 +115,7 @@ bool UnsteadyNSSolver::Solve(SampleGenerator *sample_generator)
       timer.Start("Solve/save_sol");
 
       cfl = ComputeCFL(dt);
-      SanityCheck(step);
+      SanityCheck(step, time - initial_time);
       if (report_interval &&
           ((step+1) % report_interval) == 0)
          printf("Time step: %05d, CFL: %.3e\n", step+1, cfl);
@@ -143,7 +147,39 @@ bool UnsteadyNSSolver::Solve(SampleGenerator *sample_generator)
 
    timer.Print("UnsteadyNSSolver::Solve", true);
 
+   SaveMetrics(converged, time - initial_time);
+
    return converged;
+}
+
+void UnsteadyNSSolver::SanityCheck(const int step, const double simulation_time)
+{
+   if (isnan(U_step->Min()) || isnan(U_step->Max()))
+   {
+      printf("Step : %d\n", step);
+      SaveMetrics(false, simulation_time);
+      mfem_error("UnsteadyNSSolver: Solution blew up!!\n");
+   }
+}
+
+void UnsteadyNSSolver::SaveMetrics(const bool converged, const double simulation_time)
+{
+   /* every rank runs the identical time integration, so only rank 0 writes the file. */
+   if (rank != 0) return;
+
+   printf("Saving the metrics file %s ...", metrics_file.c_str());
+
+   hid_t file_id;
+   herr_t errf = 0;
+   file_id = H5Fcreate(metrics_file.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+   assert(file_id >= 0);
+
+   hdf5_utils::WriteAttribute(file_id, "converged", converged);
+   hdf5_utils::WriteAttribute(file_id, "simulation_time", simulation_time);
+
+   errf = H5Fclose(file_id);
+   assert(errf >= 0);
+   printf("Done!\n");
 }
 
 void UnsteadyNSSolver::InitializeTimeIntegration()
