@@ -33,6 +33,9 @@ protected:
    int restart_interval = 0;
    // output file for run metrics
    std::string metrics_file = "metrics.h5";
+   /* min/max bounds for the solution sanity check.
+      Size(2) if solution_limit/{velocity,pressure} is specified, Size(0) otherwise. */
+   Vector u_limit, p_limit;
 
    // BDFk/EXTk coefficients.
    /* use first order for now. */
@@ -117,6 +120,9 @@ private:
    void Step(double &time, int step);
 
    void SanityCheck(const int step, const double simulation_time);
+   /* Report the node that violated solution_limit and abort. Does not return. */
+   void ReportSolutionCrash(const int step, const double simulation_time, const int m,
+                            const int var, const int dof, const double val, const Vector &limit);
    void SaveMetrics(const bool converged, const double simulation_time);
    double ComputeCFL(const double dt);
    void SetTime(const double time);

@@ -30,6 +30,20 @@ UnsteadyNSSolver::UnsteadyNSSolver(TopologyHandler *input_topol_handler)
    if (save_sol)
       restart_interval = config.GetOption<int>("save_solution/restart_interval", 0);
 
+   /* optional min/max bounds checked at every timestep. an empty Vector disables the check. */
+   Vector no_limit;
+   u_limit = config.GetOption<Vector>("solution_limit/velocity", no_limit);
+   p_limit = config.GetOption<Vector>("solution_limit/pressure", no_limit);
+
+   if ((u_limit.Size() != 0) && (u_limit.Size() != 2))
+      mfem_error("UnsteadyNSSolver: solution_limit/velocity must be a 2-element [min, max] list!\n");
+   if ((p_limit.Size() != 0) && (p_limit.Size() != 2))
+      mfem_error("UnsteadyNSSolver: solution_limit/pressure must be a 2-element [min, max] list!\n");
+   if ((u_limit.Size() == 2) && (u_limit[0] > u_limit[1]))
+      mfem_error("UnsteadyNSSolver: solution_limit/velocity must satisfy min <= max!\n");
+   if ((p_limit.Size() == 2) && (p_limit[0] > p_limit[1]))
+      mfem_error("UnsteadyNSSolver: solution_limit/pressure must satisfy min <= max!\n");
+
    if (time_order != 1)
       mfem_error("UnsteadyNSSolver supports only first-order time integration for now!\n");
 
@@ -160,6 +174,76 @@ void UnsteadyNSSolver::SanityCheck(const int step, const double simulation_time)
       SaveMetrics(false, simulation_time);
       mfem_error("UnsteadyNSSolver: Solution blew up!!\n");
    }
+
+   if ((u_limit.Size() == 0) && (p_limit.Size() == 0)) return;
+
+   /* U_step is ordered by variable: block m is subdomain m's velocity,
+      block numSub + m its pressure. */
+   for (int m = 0; m < numSub; m++)
+   {
+      if (u_limit.Size() == 2)
+      {
+         Vector &u_m = U_step->GetBlock(m);
+
+         /* |u| <= sqrt(dim) * max_d |u_d|, and a magnitude never falls below a non-positive
+            bound, so these are the only cases where a node can be out of range. */
+         if ((sqrt((double) vdim[0]) * u_m.Normlinf() > u_limit[1]) || (u_limit[0] > 0.0))
+         {
+            const int ndofs = ufes[m]->GetNDofs();
+            /* ufes is Ordering::byNODES and DenseMatrix is column-major, so column d of this
+               view is velocity component d and row n is node n's velocity vector. */
+            DenseMatrix u_nodal(u_m.GetData(), ndofs, vdim[0]);
+            Vector u_n;
+            for (int n = 0; n < ndofs; n++)
+            {
+               u_nodal.GetRow(n, u_n);
+               const double umag = u_n.Norml2();
+               if ((umag >= u_limit[0]) && (umag <= u_limit[1])) continue;
+
+               ReportSolutionCrash(step, simulation_time, m, 0, n, umag, u_limit);
+            }
+         }
+      }
+
+      if (p_limit.Size() == 2)
+      {
+         Vector &p_m = U_step->GetBlock(numSub + m);
+
+         if ((p_m.Min() < p_limit[0]) || (p_m.Max() > p_limit[1]))
+            for (int n = 0; n < p_m.Size(); n++)
+            {
+               if ((p_m(n) >= p_limit[0]) && (p_m(n) <= p_limit[1])) continue;
+
+               ReportSolutionCrash(step, simulation_time, m, 1, n, p_m(n), p_limit);
+            }
+      }
+   }
+}
+
+void UnsteadyNSSolver::ReportSolutionCrash(const int step, const double simulation_time, const int m,
+                                           const int var, const int dof, const double val,
+                                           const Vector &limit)
+{
+   /* Mesh::GetNodes projects the coordinates onto the given GridFunction's space. A dim-component
+      space on fec[var] shares the scalar dof numbering of ufes[m]/pfes[m], so DofToVDof(dof, d)
+      is coordinate d of the offending node. */
+   FiniteElementSpace coord_fes(meshes[m], fec[var], dim);
+   GridFunction coords(&coord_fes);
+   meshes[m]->GetNodes(coords);
+
+   /* every rank runs the identical time integration, so only rank 0 reports. */
+   if (rank == 0)
+   {
+      printf("UnsteadyNSSolver: solution crashed at step %d (t = %.4e)!\n", step + 1, simulation_time);
+      printf("  subdomain %d, %s = %.4e outside [%.4e, %.4e] at (", m,
+             (var == 0) ? "|vel|" : "pres", val, limit[0], limit[1]);
+      for (int d = 0; d < dim; d++)
+         printf(" %.4e", coords(coord_fes.DofToVDof(dof, d)));
+      printf(" )\n");
+   }
+
+   SaveMetrics(false, simulation_time);
+   mfem_error("UnsteadyNSSolver: Solution went beyond solution_limit!\n");
 }
 
 void UnsteadyNSSolver::SaveMetrics(const bool converged, const double simulation_time)

@@ -357,6 +357,39 @@ conventions. The default, `backward_facing_step`, uses the same tag numbering as
 - The Neumann outflow means `pres_dbc` is true, so the pressure-constant removal
   and complementary-flux paths stay off — matching OpenLB's pressure outflow BC.
 
+### Catching a divergence early
+
+`solution_limit` bounds the solution at every node, checked once per timestep:
+
+```yaml
+solution_limit:
+  velocity: [0.0, 15.0]     # min/max of |u| -- the magnitude, not per-component
+  pressure: [-50.0, 50.0]   # min/max of p
+```
+
+Each key takes a 2-element `[min, max]` list and is optional; omit one to skip
+that check, or both to restore the old behaviour, where `SanityCheck` only tested
+for NaN. On the first node outside its range the run prints the offending value
+and its physical coordinates, writes `metrics.h5` with `converged = false`, and
+aborts:
+
+```
+UnsteadyNSSolver: solution crashed at step 137 (t = 1.3700e-01)!
+  subdomain 0, |vel| = 7.3151e+00 outside [0.0000e+00, 1.5000e+01] at ( 1.2500e-01 3.7500e-01 )
+```
+
+The coordinates are what makes this worth setting: a divergence that starts at
+the inlet, at a wall, or at a subdomain interface points at a boundary-condition
+or mesh problem, whereas one that starts in the shear layer is the genuine
+under-resolution this example is courting. Pick bounds from the physics — the
+inflow peaks at `u0`, so a few times `u0` is a reasonable ceiling for `|u|`. The
+check is cheap: a `Min`/`Max` (pressure) or infinity-norm (velocity) screen runs
+first, and the per-node scan only happens when that screen cannot rule a
+violation out.
+
+Note this covers the FOM path only. `SolveROM` advances in reduced coordinates
+and never calls `SanityCheck`.
+
 ## Meshes
 
 Each geometry is declared in `generate_mesh.py` as a list of rectangular blocks.

@@ -56,6 +56,13 @@ time-integration:
   bdf_order: 1
   report_interval: 100
 
+# Checked at every timestep; the run aborts at the first node outside a range,
+# reporting where. Both keys are optional -- omit one to skip that check. The
+# inflow peaks at u0 = 1.5, so |u| well above that means the run has diverged.
+solution_limit:
+  velocity: [0.0, 1.0e+2]   # |u|, not per-component
+  pressure: [-1.0e+2, 1.0e+2]
+
 visualization:
   enabled: true
   unified_paraview: true
