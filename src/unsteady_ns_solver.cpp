@@ -197,7 +197,14 @@ void UnsteadyNSSolver::SetupInitialCondition(int &initial_step, double &time)
 
    if (use_restart)
    {
-      restart_file = config.GetRequiredOption<std::string>("solver/restart_file");
+      int restart_timestep = config.GetOption<int>("solver/restart_timestep", -1);
+      if (restart_timestep > 0)
+      {
+         std::string backup_file = string_format(file_fmt, sol_dir.c_str(), sol_prefix.c_str(), restart_timestep);
+         restart_file = config.GetOption<std::string>("solver/restart_file", backup_file);
+      }
+      else
+         restart_file = config.GetRequiredOption<std::string>("solver/restart_file");
       LoadSolutionWithTime(restart_file, initial_step, time);
    }
    else
