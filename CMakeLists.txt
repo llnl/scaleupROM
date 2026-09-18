@@ -93,6 +93,11 @@ find_package(ZLIB 1.2.3 REQUIRED)
 
 find_package(Doxygen 1.8.5)
 
+# Prefer the GoogleTest installation bundled under LIB_DIR.  On LC systems,
+# other loaded modules (notably Python) can expose an ABI-incompatible GTest.
+if (NOT (LIB_DIR STREQUAL "") AND NOT GTest_ROOT)
+  set(GTest_ROOT "${LIB_DIR}")
+endif()
 find_package(GTest 1.6.0)
 
 find_program(GMSH gmsh)

@@ -17,7 +17,7 @@ file(COPY usns.periodic.yml DESTINATION ${CMAKE_BINARY_DIR}/test/gmsh/)
 ADD_CUSTOM_COMMAND(
     OUTPUT ${CMAKE_BINARY_DIR}/test/gmsh/square-circle.msh
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/test/gmsh"
-    COMMAND gmsh square-circle.geo -2
+    COMMAND "${GMSH}" square-circle.geo -2
     COMMENT "Generating test/gmsh/square-circle.msh ..."
 )
 
