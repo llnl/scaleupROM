@@ -1,0 +1,89 @@
+# Study plumbing for the corner2d high-Re campaign. The tuning specification is in TUNING.md.
+
+# PLACEHOLDER: must be absolute.
+job_script: /ABS/PATH/TO/scaleupROM/examples/highReChannel/hptune/job.sbatch
+job_script_sha256: ""
+
+# Relative, so it resolves against the study directory.
+config_template: corner2d.bootstrap.yml
+config_mode: single_yaml
+
+# The loop's --output puts the scheduler log here, and main writes everything else to stdout.
+run_logs:
+  - "job.*.out"
+
+# timer.Print runs immediately before the terminal SaveMetrics, and only on the path where the
+# time loop completed -- the NaN and solution_limit aborts never reach it.
+run_complete_signal: "UnsteadyNSSolver::Solve"
+
+loss_history: ""
+
+# SaveMetrics writes these as attributes on the HDF5 root group, not as datasets. The file is
+# written to the run's cwd (the study directory); job.sbatch moves it into the trial directory.
+metrics:
+  converged:
+    file: metrics.h5
+    attr: /@converged
+  simulation_time:
+    file: metrics.h5
+    attr: /@simulation_time
+  nu:
+    file: metrics.h5
+    attr: /@nu
+
+postrun_cmd: ""
+
+scheduler: slurm
+queue: pdebug
+
+initial_resources:
+  nodes: 1
+  ntasks: 1
+  walltime: 30m
+
+decision_reserve: 30m
+submit_extra_args: []
+notify_email: ""
+
+# PLACEHOLDER: cmd[0] must be an absolute path, never a bare name. Run
+#   <hptune>/scripts/preflight.sh -q pdebug -B <bank> -v <study>/venv
+# and paste the agent.cmd block it prints.
+agent:
+  cmd:
+    - /collab/usr/global/tools/sandbox/codex-sandbox
+    - exec
+    - --skip-git-repo-check
+    - --approve-for-me
+    - -m
+    - gpt-5.6-sol
+    - -c
+    - model_reasoning_effort=xhigh
+  cd_flag: --cd
+  image_flag: --image
+  timeout: 900
+
+reads:
+  interpret_run:
+    max_zooms: 12
+    max_lines_per_zoom: 300
+  decide_next_trial:
+    max_zooms: 8
+    max_lines_per_zoom: 200
+
+# The failure shapes this code emits, merged over the built-in patterns by id.
+patterns:
+  - id: solution_limit
+    regex: 'solution crashed at step|went beyond solution_limit'
+    hint: invalid_parameters
+    note: A node left solution_limit. The printed coordinates say where.
+  - id: solution_blowup
+    regex: 'Solution blew up'
+    hint: invalid_parameters
+    note: NaN reached before solution_limit caught it.
+  - id: missing_restart
+    regex: 'file does not exist|solution size does not match'
+    hint: invalid_parameters
+    note: restart_timestep named a checkpoint that was never written.
+  - id: mfem_abort
+    regex: 'MFEM abort|MFEM error'
+    hint: unknown

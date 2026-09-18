@@ -1,0 +1,84 @@
+# The campaign's config template: 200 steps on the coarse corner2d mesh, from rest.
+# The loop never edits this file; each trial gets its own copy at trials/<id>/config.yaml.
+#
+# channel_flow starts from rest, unlike backward_facing_step. The mesh tag variant has to
+# match the problem (.chan).
+
+main:
+  mode: single_run
+  use_rom: false
+  solver: unsteady-ns
+
+mesh:
+  type: submesh
+  filename: meshes/corner2d.h0.0625.chan.msh.mfem
+  uniform_refinement: 0
+
+domain-decomposition:
+  type: none
+
+discretization:
+  order: 1
+  full-discrete-galerkin: true
+
+navier-stokes:
+  operator-type: lf
+  zeta: 1.0
+
+# Overwritten by single_run/channel_flow/nu at SetParameterizedProblem. Kept in sync by
+# convention only.
+stokes:
+  nu: 2.0e+2
+
+solver:
+  direct_solve: true
+  use_restart: true
+  restart_timestep: 0
+
+time-integration:
+  timestep_size: 2.0e-3   # CFL ~ 0.16 on h = 1/16 at u_max = 2.5
+  number_of_timesteps: 200
+  bdf_order: 1
+  report_interval: 10
+
+# Checked every timestep: a divergence aborts with the offending node's coordinates instead
+# of spending the whole trial reaching NaN.
+solution_limit:
+  velocity: [0.0, 1.0e+2]     # min/max of |u| -- the magnitude, not per-component
+
+visualization:
+  enabled: false
+  unified_paraview: true
+  time_interval: 20
+  file_path:
+    directory: paraview
+    prefix: corner2d_smoke
+
+save_solution:
+  enabled: true
+  restart_interval: 500  # every 1.0 physical time, as OpenLB checkpoints
+  file_path:
+    directory: restart
+    prefix: corner2d_Re500
+
+parameterized_problem:
+  name: channel_flow
+
+# Only the block named by parameterized_problem/name is read. An omitted nu is silent and
+# leaves viscosity at ChannelFlow's default of 1.0 -- it does not fall back to stokes/nu.
+single_run:
+  backward_facing_step:
+    nu: 2.0e-3
+    y0: 4.0
+    y1: 5.0
+    u0: 1.5
+    amp0: 0.0
+    ky0: 0.0
+    freq0: 0.0
+    t_offset0: 0.0
+  channel_flow:
+    # The campaign's starting point, not its target. See TUNING.md.
+    nu: 2.0e+2
+    L: 1.0        # duct height   = y1 - y0
+    x0: 4.5       # duct centre   = (y0 + y1) / 2
+    U: 1.5        # peak velocity = u0

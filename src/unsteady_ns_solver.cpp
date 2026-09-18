@@ -260,6 +260,9 @@ void UnsteadyNSSolver::SaveMetrics(const bool converged, const double simulation
 
    hdf5_utils::WriteAttribute(file_id, "converged", converged);
    hdf5_utils::WriteAttribute(file_id, "simulation_time", simulation_time);
+   /* the viscosity actually assembled: SetParameterizedProblem overwrites stokes/nu with the
+      parameterized problem's own nu, so this is the only faithful record of it. */
+   hdf5_utils::WriteAttribute(file_id, "nu", nu);
 
    errf = H5Fclose(file_id);
    assert(errf >= 0);
@@ -312,12 +315,16 @@ void UnsteadyNSSolver::InitializeTimeIntegration()
 void UnsteadyNSSolver::SetupInitialCondition(int &initial_step, double &time)
 {
    bool use_restart = config.GetOption<bool>("solver/use_restart", false);
+   int restart_timestep = config.GetOption<int>("solver/restart_timestep", -1);
    std::string restart_file, file_fmt;
    file_fmt = "%s/%s_%08d.h5";
 
-   if (use_restart)
+   /* Step 0 is the initial condition itself, written as a checkpoint below rather than loaded.
+      So a restart at step 0 is a fresh start, not a file to go looking for. */
+   const bool from_scratch = (!use_restart) || (restart_timestep == 0);
+
+   if (!from_scratch)
    {
-      int restart_timestep = config.GetOption<int>("solver/restart_timestep", -1);
       if (restart_timestep > 0)
       {
          std::string backup_file = string_format(file_fmt, sol_dir.c_str(), sol_prefix.c_str(), restart_timestep);
@@ -340,7 +347,7 @@ void UnsteadyNSSolver::SetupInitialCondition(int &initial_step, double &time)
       time = 0.0;
    }
 
-   if ((!use_restart) && save_sol)
+   if (from_scratch && save_sol)
    {
       restart_file = string_format(file_fmt, sol_dir.c_str(), sol_prefix.c_str(), initial_step);
       SaveSolutionWithTime(restart_file, initial_step, time);
