@@ -43,7 +43,9 @@ initial_resources:
 
 decision_reserve: 30m
 submit_extra_args: []
-notify_email: ""
+
+# Any terminal decision, and guard rejections (which downgrade to stop_needs_human).
+notify_email: "user@email.address"
 
 # PLACEHOLDER: cmd[0] must be an absolute path, never a bare name. Run
 #   <hptune>/scripts/preflight.sh -q pdebug -B <bank> -v <study>/venv

@@ -7,6 +7,8 @@
 
 set -u
 
+module load mvapich2
+
 : "${STUDY:?STUDY must be set}"
 : "${VENV:=$STUDY/venv}"
 if [ -d "$VENV" ]; then
