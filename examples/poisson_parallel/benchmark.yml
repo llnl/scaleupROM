@@ -1,0 +1,92 @@
+main:
+#mode: run_example/sample_generation/build_rom/single_run
+  mode: single_run
+  use_rom: true
+  solver: poisson
+
+mesh:
+  type: component-wise
+  uniform_refinement: 0
+  component-wise:
+# benchmark.sh overrides this with the generated configuration for each case.
+    global_config: "configs/benchmarks/benchmark.h5"
+    components:
+      - name: "empty"
+        file: "meshes/square.o3.mesh"
+      - name: "square-circle"
+        file: "meshes/square-circle.msh.mfem"
+      - name: "square-square"
+        file: "meshes/square-square.msh.mfem"
+      - name: "square-triangle"
+        file: "meshes/square-triangle.msh.mfem"
+      - name: "square-star"
+        file: "meshes/square-star.msh.mfem"
+
+domain-decomposition:
+  type: interior_penalty
+
+discretization:
+  order: 2
+  full-discrete-galerkin: false
+
+solver:
+  direct_solve: true
+  use_amg: true
+  max_iter: 1000000
+  print_level: 0
+  absolute_tolerance: 1.0e-10
+  relative_tolerance: 1.0e-10
+
+visualization:
+  enabled: false
+  visualize_error: true
+  unified_paraview: false
+  file_path:
+    prefix: benchmarks/paraview/poisson_array_output
+
+parameterized_problem:
+  name: poisson_component
+
+single_run:
+  choose_from_random_sample: false
+  poisson_component:
+    k0: 0.6
+    k1: -0.6
+    bdr_k0: 0.05
+    bdr_k1: 0.04
+    offset: 0.1
+    bdr_offset: 0.
+
+basis:
+  prefix: "basis/poisson_basis"
+  number_of_basis: 10
+  tags:
+    - name: "empty"
+    - name: "square-circle"
+    - name: "square-square"
+    - name: "square-triangle"
+    - name: "square-star"
+  svd:
+    save_spectrum: true
+    update_right_sv: false
+  visualization:
+    enabled: false
+    prefix: poisson_comp
+
+model_reduction:
+  rom_handler_type: mfem
+  linear_solver_type: direct
+  linear_system_type: spd
+  hypre_matrix: yes
+# This is the input for saving ROM matrix/rhs system.
+  save_linear_system:
+    enabled: false
+    prefix: benchmarks/rom-system/poisson
+  preconditioner: gs
+  # individual/universal
+  subdomain_training: universal
+  save_operator:
+    level: component
+    prefix: "poisson_comp"
+  compare_solution:
+    enabled: false
