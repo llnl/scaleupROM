@@ -9,9 +9,12 @@ file(COPY benchmark.yml DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_paralle
 file(COPY generate_configs.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY setup_poisson.sh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY benchmark.sh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
+file(COPY clear_results.sh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY run_workflow.sh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY generate_benchmark.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
+file(COPY generate_structured_benchmark.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY plot_benchmarks.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
+file(COPY profile_benchmarks.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY benchmarks DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 
 file(COPY ../stokes/meshes/square.o3.mesh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel/meshes)

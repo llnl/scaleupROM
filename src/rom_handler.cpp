@@ -651,6 +651,7 @@ void MFEMROMHandler::Solve(BlockVector* U)
 
    if (reduced_rhs_hypre.Size() > 0)
      {
+       double profile_start = MPI_Wtime();
        Vector reduced_sol_hypre(reduced_rhs_hypre.Size());
 
        // TODO: eliminate global RHS vector in parallel.
@@ -658,11 +659,18 @@ void MFEMROMHandler::Solve(BlockVector* U)
 	 {
 	   reduced_rhs_hypre[i] = (*reduced_rhs)[hypre_start + i];
 	 }
+       PrintParallelProfile("rom.solve_extract_local_rhs",
+                            MPI_Wtime() - profile_start,
+                            reduced_rhs_hypre.Size());
 
+       profile_start = MPI_Wtime();
        Solve(reduced_rhs_hypre, reduced_sol_hypre);
+       PrintParallelProfile("rom.solve_mumps", MPI_Wtime() - profile_start,
+                            reduced_rhs_hypre.Size());
 
        // Gather local solutions into global solution vector.
        // TODO: keep this distributed in the parallel case.
+       profile_start = MPI_Wtime();
        CAROM::Vector globalSol(reduced_sol_hypre.GetData(), reduced_sol_hypre.Size(), true);
        globalSol.gather();
 
@@ -670,13 +678,18 @@ void MFEMROMHandler::Solve(BlockVector* U)
 
        for (int i=0; i<reduced_sol->Size(); ++i)
 	 (*reduced_sol)[i] = globalSol(i);
+       PrintParallelProfile("rom.solve_gather_global_solution",
+                            MPI_Wtime() - profile_start, reduced_sol->Size());
      }
    else
      Solve(*reduced_rhs, *reduced_sol);
 
    // 23. reconstruct FOM state
    // TODO: distribute this in the parallel case.
+   double profile_start = MPI_Wtime();
    LiftUpGlobal(*reduced_sol, *U);
+   PrintParallelProfile("rom.solve_lift_solution",
+                        MPI_Wtime() - profile_start, num_rom_blocks_local);
 }
 
 void MFEMROMHandler::NonlinearSolve(Operator &oper, BlockVector* U, Solver *prec)
@@ -1011,6 +1024,7 @@ void MFEMROMHandler::LoadBalanceROMBlocks(int rank, int nproc)
 
 void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int nproc)
 {
+  double profile_start = MPI_Wtime();
   const HYPRE_BigInt gsize = rom_block_offsets[num_rom_blocks];
 
   Array<int> boffset(nproc+1);
@@ -1049,6 +1063,9 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 	    }
 	}
     }
+  PrintParallelProfile("rom.hypre_discover_offd_blocks",
+                       MPI_Wtime() - profile_start,
+                       static_cast<long>(nblocks) * num_rom_blocks);
 
   int offd_size = 0;
   for (auto b : offd_blocks)
@@ -1067,6 +1084,7 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 
   // Set diag and offd
 
+  profile_start = MPI_Wtime();
   int localOffset = 0;
   for (int b=0; b<nblocks; ++b)
     {
@@ -1129,6 +1147,9 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 	    }
 	}
     }
+  PrintParallelProfile("rom.hypre_fill_diag_offd",
+                       MPI_Wtime() - profile_start,
+                       static_cast<long>(nblocks) * num_rom_blocks);
 
   const int num_offd_cols = offd_cols.size();
   MFEM_VERIFY(num_offd_cols == offd_size, "");
@@ -1146,6 +1167,7 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 
   MFEM_VERIFY(cnt == num_offd_cols, "");
 
+  profile_start = MPI_Wtime();
   diag.Finalize();
   offd.Finalize();
 
@@ -1167,6 +1189,8 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
     }
 
   offd.SetWidth(offd_size);
+  PrintParallelProfile("rom.hypre_finalize_and_remap",
+                       MPI_Wtime() - profile_start, num_offd_cols);
 
   Array<HYPRE_BigInt> starts(2);
   starts[0] = offset[rank];
@@ -1174,6 +1198,7 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 
   MFEM_VERIFY(HYPRE_AssumedPartitionCheck(), "");
 
+  profile_start = MPI_Wtime();
   if (nproc == 1) // Serial case
     {
       // constructor with 4 arguments, v1
@@ -1188,15 +1213,20 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
 					hdiag, hoffd, cmap, true);
       romMat_hypre->SetOwnerFlags(romMat_hypre->OwnsDiag(), romMat_hypre->OwnsOffd(), 1);
     }
+  PrintParallelProfile("rom.hypre_matrix_constructor",
+                       MPI_Wtime() - profile_start, localSizes[rank]);
 
   hypre_start = starts[0];
 
   reduced_rhs_hypre.SetSize(starts[1] - starts[0]);
 
+  profile_start = MPI_Wtime();
   delete mumps;
   mumps = new MUMPSSolver(MPI_COMM_WORLD);
   mumps->SetMatrixSymType(mat_type);
   mumps->SetOperator(*romMat_hypre);
+  PrintParallelProfile("rom.mumps_setup", MPI_Wtime() - profile_start,
+                       localSizes[rank]);
 }
 
 void MFEMROMHandler::SetRomMat(BlockMatrix *input_mat, const bool init_direct_solver)
@@ -1208,7 +1238,9 @@ void MFEMROMHandler::SetRomMat(BlockMatrix *input_mat, const bool init_direct_so
    }
 
    delete romMat_mono;
-   romMat_mono = romMat->CreateMonolithic();
+   romMat_mono = NULL;
+   if (init_direct_solver)
+      romMat_mono = romMat->CreateMonolithic();
 
    if ((linsol_type == SolverType::DIRECT) && (init_direct_solver))
       SetupDirectSolver();

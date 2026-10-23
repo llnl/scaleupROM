@@ -4,6 +4,9 @@ main:
   use_rom: true
   solver: poisson
 
+time_profile:
+  parallel_scaling: true
+
 mesh:
   type: component-wise
   uniform_refinement: 0

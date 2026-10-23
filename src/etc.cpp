@@ -29,3 +29,20 @@ bool FileExists(const std::string& name)
    return f.good();
    // ifstream f will be closed upon the end of the function.
 }
+
+bool ParallelProfileEnabled()
+{
+   return config.GetOption<bool>("time_profile/parallel_scaling", false);
+}
+
+void PrintParallelProfile(const std::string &phase, double seconds,
+                          long work_items)
+{
+   if (!ParallelProfileEnabled()) return;
+   int rank, nranks;
+   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nranks);
+   printf("PARALLEL_PROFILE,%d,%d,%s,%.9g,%ld\n", rank, nranks,
+          phase.c_str(), seconds, work_items);
+   fflush(stdout);
+}

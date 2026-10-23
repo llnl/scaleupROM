@@ -278,19 +278,30 @@ void MultiBlockSolver::BuildROMLinElems()
 
 void MultiBlockSolver::AssembleROMMat()
 {
+   double profile_start = MPI_Wtime();
    const Array<int> *rom_block_offsets = rom_handler->GetBlockOffsets();
    BlockMatrix *romMat = new BlockMatrix(*rom_block_offsets);
    romMat->owns_blocks = true;
 
    AssembleROMMat(*romMat);
+   PrintParallelProfile("rom.block_assembly", MPI_Wtime() - profile_start,
+                        numSubLoc);
 
+   profile_start = MPI_Wtime();
    romMat->Finalize();
+   PrintParallelProfile("rom.block_finalize", MPI_Wtime() - profile_start);
    const bool hypreAssemble = rom_handler->HypreAssemble();
+   profile_start = MPI_Wtime();
    rom_handler->SetRomMat(romMat, !hypreAssemble);
+   PrintParallelProfile("rom.set_matrix_monolithic",
+                        MPI_Wtime() - profile_start);
 
    if (hypreAssemble)
      {
+       profile_start = MPI_Wtime();
        rom_handler->CreateHypreParMatrix(romMat, rank, nproc);
+       PrintParallelProfile("rom.create_hypre_total",
+                            MPI_Wtime() - profile_start);
 
        localBlocks = rom_handler->GetLocalBlocks(); // TODO: get this for FOM without depending on ROM?
        rom_handler->GetLocalNumBlocks(localNumBlocks); // TODO: get this for FOM without depending on ROM?
@@ -306,6 +317,7 @@ void MultiBlockSolver::AssembleROMMat(BlockMatrix &romMat)
 
    const int ossub = topol_handler->GlobalSubdomainIndex(0); // Offset for first local subdomain
 
+   double profile_start = MPI_Wtime();
    // component domain matrix.
    for (int mm = 0; mm < numSubLoc; mm++)
      {
@@ -338,8 +350,11 @@ void MultiBlockSolver::AssembleROMMat(BlockMatrix &romMat)
          AddToBlockMatrix(midx, midx, *bdr_mat, romMat);
       }  // for (int b = 0; b < bdr_c2g->Size(); b++)
    }  // for (int m = 0; m < numSub; m++)
+   PrintParallelProfile("rom.assemble_local_domains",
+                        MPI_Wtime() - profile_start, numSubLoc);
 
    // interface matrices.
+   profile_start = MPI_Wtime();
    for (int p = 0; p < topol_handler->GetNumPorts(); p++)
    {
       const PortInfo *pInfo = topol_handler->GetPortInfo(p);
@@ -361,6 +376,9 @@ void MultiBlockSolver::AssembleROMMat(BlockMatrix &romMat)
 
       AddToBlockMatrix(midx, midx, *port_mat, romMat);
    }
+   PrintParallelProfile("rom.assemble_global_port_loop",
+                        MPI_Wtime() - profile_start,
+                        topol_handler->GetNumPorts());
 }
 
 void MultiBlockSolver::InitVisualization(const std::string& output_path)

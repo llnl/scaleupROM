@@ -51,7 +51,7 @@ run_case() {
   local blocks=$((nx * ny)) rom_dofs=$((nx * ny * basis_size))
   local config="configs/benchmarks/box-channel.${nx}x${ny}.h5"
   local log="benchmarks/logs/${kind}.${nx}x${ny}.n${np}.r${rep}.log"
-  [[ -f $config ]] || python3 generate_benchmark.py "${nx}x${ny}"
+  [[ -f $config ]] || python3 generate_structured_benchmark.py "${nx}x${ny}"
 
   local overrides="mesh/component-wise/global_config=${config}"
   overrides+=":visualization/enabled=false"

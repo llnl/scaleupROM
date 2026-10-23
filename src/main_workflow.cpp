@@ -487,6 +487,7 @@ void BuildROM(MPI_Comm comm)
 
 double SingleRun(MPI_Comm comm, const std::string output_file)
 {
+   double profile_start = MPI_Wtime();
    if (config.GetOption<bool>("single_run/choose_from_random_sample", false))
    {
       RandomSampleGenerator *generator = new RandomSampleGenerator(comm);
@@ -498,10 +499,17 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
    }
 
    ParameterizedProblem *problem = InitParameterizedProblem();
+   PrintParallelProfile("init.parameterized_problem",
+                        MPI_Wtime() - profile_start);
+   profile_start = MPI_Wtime();
    MultiBlockSolver *test = InitSolver();
+   PrintParallelProfile("init.solver_and_topology", MPI_Wtime() - profile_start);
+   profile_start = MPI_Wtime();
    test->InitVariables();
    if (test->UseRom()) test->InitROMHandler();
    test->InitVisualization();
+   PrintParallelProfile("init.variables_rom_visualization",
+                        MPI_Wtime() - profile_start);
 
    StopWatch solveTimer;
    std::string solveType = (test->UseRom()) ? "ROM" : "FOM";
@@ -510,9 +518,12 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
    test->SetParameterizedProblem(problem);
 
    // TODO: there are skippable operations depending on rom/fom mode.
+   profile_start = MPI_Wtime();
    test->BuildRHSOperators();
    test->SetupRHSBCOperators();
    test->AssembleRHS();
+   PrintParallelProfile("setup.rhs_operators_bc_assembly",
+                        MPI_Wtime() - profile_start);
 
    const int num_var = test->GetNumVar();
    Vector rom_assemble(1), rom_solve(1), fom_assemble(1), fom_solve(1), error(num_var);
@@ -524,7 +535,10 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
    if (test->UseRom())
    {
       rom = test->GetROMHandler();
+      profile_start = MPI_Wtime();
       test->LoadReducedBasis();
+      PrintParallelProfile("rom.load_reduced_basis",
+                           MPI_Wtime() - profile_start);
 
       if (test->IsNonlinear())
          test->AllocateROMNlinElems();
@@ -551,11 +565,17 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
             mfem_error("Submesh does not support component rom building level!\n");
 
          printf("Loading ROM projected elements.. ");
+         profile_start = MPI_Wtime();
          test->LoadROMLinElems(filename);
+         PrintParallelProfile("rom.load_component_operators",
+                              MPI_Wtime() - profile_start);
          printf("Done!\n");
 
          printf("Assembling ROM linear matrix.. ");
+         profile_start = MPI_Wtime();
          test->AssembleROMMat();
+         PrintParallelProfile("rom.assemble_total",
+                              MPI_Wtime() - profile_start);
          printf("Done!\n");
 
          if (test->IsNonlinear())
@@ -583,7 +603,9 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
          mfem_error("SingleRun - Unknown ROMBuildingLevel!\n");
 
       printf("Projecting RHS to ROM.. ");
+      profile_start = MPI_Wtime();
       test->ProjectRHSOnReducedBasis();
+      PrintParallelProfile("rom.project_rhs", MPI_Wtime() - profile_start);
       printf("Done!\n");
    }  // if (test->UseRom())
    else
@@ -619,6 +641,7 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
    else
       fom_solve = solveTimer.RealTime();
 
+   profile_start = MPI_Wtime();
    /* save the ROM system for analysis/debug */
    bool save_rom = config.GetOption<bool>("model_reduction/save_linear_system/enabled", false);
    if (save_rom)
@@ -698,9 +721,14 @@ double SingleRun(MPI_Comm comm, const std::string output_file)
    // Save solution and visualization.
    test->SaveSolution();
    test->SaveVisualization();
+   PrintParallelProfile("postprocess.output_and_comparison",
+                        MPI_Wtime() - profile_start);
    
+   profile_start = MPI_Wtime();
    delete test;
    delete problem;
+   PrintParallelProfile("cleanup.solver_and_problem",
+                        MPI_Wtime() - profile_start);
 
    // return the maximum error over all variables.
    return error.Max();

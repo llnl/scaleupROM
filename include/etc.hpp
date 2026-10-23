@@ -28,6 +28,11 @@ inline void DeletePointers(Array2D<T*> &ptr_array)
 
 bool FileExists(const std::string& name);
 
+/// Lightweight, non-collective timing output for parallel scaling studies.
+bool ParallelProfileEnabled();
+void PrintParallelProfile(const std::string &phase, double seconds,
+                          long work_items = -1);
+
 template<typename ... Args>
 std::string string_format( const std::string& format, Args ... args )
 {

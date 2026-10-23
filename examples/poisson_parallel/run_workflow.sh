@@ -69,6 +69,10 @@ benchmark() {
 plots() {
   MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/matplotlib-cache} \
     ./plot_benchmarks.py --input "$results"
+  if grep -q '^PARALLEL_PROFILE,' benchmarks/logs/*.log 2>/dev/null; then
+    MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/matplotlib-cache} \
+      ./profile_benchmarks.py
+  fi
 }
 
 stage=${1:-all}
