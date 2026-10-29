@@ -1,0 +1,201 @@
+main:
+  mode: single_run
+  use_rom: true
+  solver: steady-ns
+
+navier-stokes:
+  operator-type: base
+
+mesh:
+  type: component-wise
+  uniform_refinement: 1
+  component-wise:
+    vertex_gap_threshold: 1.0e-9
+    global_config: configs/component_catalog.h5
+    components:
+      - name: empty
+        file: meshes/square.tri-elem.mesh
+      - name: square-circle
+        file: meshes/square-circle.msh.mfem
+      - name: square-square
+        file: meshes/square-square.msh.mfem
+      - name: square-triangle
+        file: meshes/square-triangle.msh.mfem
+      - name: square-star
+        file: meshes/square-star.msh.mfem
+
+domain-decomposition:
+  type: interior_penalty
+
+discretization:
+  order: 2
+  full-discrete-galerkin: false
+
+solver:
+  direct_solve: true
+  print_level: 1
+  max_iter: 100
+  absolute_tolerance: 1.0e-10
+  relative_tolerance: 1.0e-10
+
+rom_solver:
+  print_level: 1
+  max_iter: 100
+  use_restart: false
+  absolute_tolerance: 1.0e-10
+  relative_tolerance: 1.0e-10
+
+visualization:
+  enabled: false
+  unified_paraview: false
+  visualize_error: true
+  file_path:
+    prefix: results/paraview/steady_ns
+
+save_solution:
+  enabled: false
+  file_path:
+    prefix: results/fom_solution
+
+parameterized_problem:
+  name: flow_past_array
+
+single_run:
+  choose_from_random_sample: false
+  flow_past_array:
+    nu: 0.04
+    u0_x: 1.5
+    u0_y: -0.8
+    du_x: 0.0
+    du_y: 0.0
+
+sample_generation:
+  maximum_number_of_snapshots: 25000
+  type: random
+  random_sample_generator:
+    number_of_samples: 400
+  report_frequency: 10
+  file_path:
+    prefix: snapshots/batch-1/steady_ns
+  parameters:
+    - key: mesh/component-wise/global_config
+      type: filename
+      minimum: 0
+      maximum: 624
+      format: configs/training/box-channel.config-%05d.h5
+    - key: single_run/flow_past_array/u0_x
+      type: double
+      minimum: -1.0
+      maximum: 1.0
+    - key: single_run/flow_past_array/u0_y
+      type: double
+      minimum: -1.0
+      maximum: 1.0
+    - key: single_run/flow_past_array/du_x
+      type: double
+      minimum: -0.1
+      maximum: 0.1
+    - key: single_run/flow_past_array/du_y
+      type: double
+      minimum: -0.1
+      maximum: 0.1
+    - key: single_run/flow_past_array/offsets_x
+      type: double
+      minimum: 0.0
+      maximum: 1.0
+    - key: single_run/flow_past_array/offsets_y
+      type: double
+      minimum: 0.0
+      maximum: 1.0
+    - key: single_run/flow_past_array/k_u_x
+      type: double
+      minimum: -0.5
+      maximum: 0.5
+    - key: single_run/flow_past_array/k_u_y
+      type: double
+      minimum: -0.5
+      maximum: 0.5
+    - key: single_run/flow_past_array/k_v_x
+      type: double
+      minimum: -0.5
+      maximum: 0.5
+    - key: single_run/flow_past_array/k_v_y
+      type: double
+      minimum: -0.5
+      maximum: 0.5
+
+basis:
+  prefix: basis/steady_ns
+  number_of_basis: 40
+  number_of_supremizer: 40
+  tags:
+    - name: empty_vel
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_empty_vel_snapshot
+    - name: empty_pres
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_empty_pres_snapshot
+    - name: square-circle_vel
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-circle_vel_snapshot
+    - name: square-circle_pres
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-circle_pres_snapshot
+    - name: square-square_vel
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-square_vel_snapshot
+    - name: square-square_pres
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-square_pres_snapshot
+    - name: square-triangle_vel
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-triangle_vel_snapshot
+    - name: square-triangle_pres
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-triangle_pres_snapshot
+    - name: square-star_vel
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-star_vel_snapshot
+    - name: square-star_pres
+      snapshot_format:
+        minimum: 1
+        maximum: 5
+        format: snapshots/batch-%d/steady_ns_sample_square-star_pres_snapshot
+  svd:
+    save_spectrum: true
+    update_right_sv: false
+  visualization:
+    enabled: false
+    prefix: results/paraview/basis/steady_ns
+
+model_reduction:
+  separate_variable_basis: true
+  linear_solver_type: direct
+  linear_system_type: us
+  nonlinear_handling: tensor
+  subdomain_training: universal
+  save_operator:
+    level: component
+    prefix: rom/steady_ns_nb40
+  compare_solution:
+    enabled: true
+    load_solution: true
+    fom_solution_file: results/fom_solution.h5
