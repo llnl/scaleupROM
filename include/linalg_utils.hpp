@@ -120,49 +120,84 @@ printf("operator= const MatrixBlocks.\n");
    }
 };
 
-/**
- * Sparse block-row matrix with globally indexed, variable-size blocks.
- *
- * Only the selected global block rows are stored. Column block identifiers
- * remain global and do not need to be part of the stored row set. Assembly is
- * map-based; Finalize() compresses the block graph into row-oriented storage.
- */
-class SparseBlockMatrix
+/** Block-to-scalar numbering for a variable-size block matrix. */
+class SparseBlockMatrixLayout
 {
 private:
    Array<int> global_row_offsets;
    Array<int> global_col_offsets;
-   Array<int> global_rows;
-   std::map<int, int> global_to_local_row;
 
-   std::vector<std::map<int, std::unique_ptr<SparseMatrix>>> assembly_rows;
+   static void ValidateOffsets(const Array<int> &offsets,
+                               const char *description);
+
+public:
+   explicit SparseBlockMatrixLayout(const Array<int> &global_offsets);
+   SparseBlockMatrixLayout(const Array<int> &global_row_offsets_,
+                           const Array<int> &global_col_offsets_);
+
+   int NumBlockRows() const { return global_row_offsets.Size() - 1; }
+   int NumBlockCols() const { return global_col_offsets.Size() - 1; }
+   int NumScalarRows() const { return global_row_offsets.Last(); }
+   int NumScalarCols() const { return global_col_offsets.Last(); }
+   int BlockRowStart(const int global_block_row) const;
+   int BlockColStart(const int global_block_col) const;
+   int BlockRowSize(const int global_block_row) const;
+   int BlockColSize(const int global_block_col) const;
+   const Array<int> &RowOffsets() const { return global_row_offsets; }
+   const Array<int> &ColOffsets() const { return global_col_offsets; }
+};
+
+class SparseBlockMatrixBuilder;
+
+/** Immutable block-CSR data with globally indexed block rows and columns. */
+class SparseBlockMatrix
+{
+private:
+   Array<int> global_rows;
    Array<int> row_starts;
    Array<int> global_columns;
    std::vector<std::unique_ptr<SparseMatrix>> blocks;
-   bool finalized = false;
+
+   SparseBlockMatrix(const Array<int> &global_rows_,
+                     const Array<int> &row_starts_,
+                     const Array<int> &global_columns_,
+                     std::vector<std::unique_ptr<SparseMatrix>> &&blocks_);
+   friend class SparseBlockMatrixBuilder;
 
 public:
-   SparseBlockMatrix(const Array<int> &global_offsets,
-                     const Array<int> &stored_global_rows);
-   SparseBlockMatrix(const Array<int> &global_row_offsets_,
-                     const Array<int> &global_col_offsets_,
-                     const Array<int> &stored_global_rows);
    ~SparseBlockMatrix() = default;
-
    SparseBlockMatrix(const SparseBlockMatrix &) = delete;
    SparseBlockMatrix &operator=(const SparseBlockMatrix &) = delete;
+   SparseBlockMatrix(SparseBlockMatrix &&) = default;
+   SparseBlockMatrix &operator=(SparseBlockMatrix &&) = default;
+
+   int NumStoredRows() const { return global_rows.Size(); }
+   int GetGlobalRow(const int local_row) const;
+   int NumBlocksInRow(const int local_row) const;
+   int GetGlobalColumn(const int local_row, const int row_entry) const;
+   const SparseMatrix &GetBlock(const int local_row, const int row_entry) const;
+};
+
+/** Mutable assembly object that produces an immutable SparseBlockMatrix. */
+class SparseBlockMatrixBuilder
+{
+private:
+   const SparseBlockMatrixLayout &layout;
+   Array<int> global_rows;
+   std::map<int, int> global_to_local_row;
+   std::vector<std::map<int, std::unique_ptr<SparseMatrix>>> assembly_rows;
+   bool consumed = false;
+
+public:
+   SparseBlockMatrixBuilder(const SparseBlockMatrixLayout &layout_,
+                            const Array<int> &stored_global_rows);
+   SparseBlockMatrixBuilder(const SparseBlockMatrixBuilder &) = delete;
+   SparseBlockMatrixBuilder &operator=(const SparseBlockMatrixBuilder &) = delete;
 
    bool StoresGlobalRow(const int global_row) const;
    void AddBlock(const int global_row, const int global_col,
                  const SparseMatrix &block);
-   void Finalize();
-
-   bool Finalized() const { return finalized; }
-   int NumStoredRows() const { return global_rows.Size(); }
-   int GetGlobalRow(const int local_row) const;
-   int RowSize(const int local_row) const;
-   int GetGlobalColumn(const int local_row, const int row_entry) const;
-   const SparseMatrix &GetBlock(const int local_row, const int row_entry) const;
+   SparseBlockMatrix Finalize();
 };
 
 void AddToBlockMatrix(const Array<int> &ridx, const Array<int> &cidx, const MatrixBlocks &mats, BlockMatrix &bmat);

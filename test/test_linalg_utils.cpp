@@ -155,31 +155,31 @@ TEST(SparseBlockMatrixTest, StoresVariableSizeBlocksByGlobalIdentity)
    // stores global block rows 0 and 1 only.
    Array<int> offsets({0, 2, 3, 5});
    Array<int> stored_rows({0, 1});
-   SparseBlockMatrix matrix(offsets, stored_rows);
+   SparseBlockMatrixLayout layout(offsets);
+   SparseBlockMatrixBuilder builder(layout, stored_rows);
 
    auto A00 = MakeSparseMatrix(2, 2, {{0, 0, 1.0}, {1, 1, 2.0}});
    auto A01 = MakeSparseMatrix(2, 1, {{0, 0, 3.0}, {1, 0, 4.0}});
    auto A11 = MakeSparseMatrix(1, 1, {{0, 0, 5.0}});
 
-   matrix.AddBlock(0, 0, *A00);
-   matrix.AddBlock(0, 1, *A01);
-   matrix.AddBlock(0, 1, *A01); // Contributions to one block accumulate.
-   matrix.AddBlock(1, 1, *A11);
-   matrix.Finalize();
+   builder.AddBlock(0, 0, *A00);
+   builder.AddBlock(0, 1, *A01);
+   builder.AddBlock(0, 1, *A01); // Contributions to one block accumulate.
+   builder.AddBlock(1, 1, *A11);
+   SparseBlockMatrix matrix = builder.Finalize();
 
-   ASSERT_TRUE(matrix.Finalized());
    ASSERT_EQ(matrix.NumStoredRows(), 2);
    EXPECT_EQ(matrix.GetGlobalRow(0), 0);
    EXPECT_EQ(matrix.GetGlobalRow(1), 1);
 
-   ASSERT_EQ(matrix.RowSize(0), 2);
+   ASSERT_EQ(matrix.NumBlocksInRow(0), 2);
    EXPECT_EQ(matrix.GetGlobalColumn(0, 0), 0);
    EXPECT_EQ(matrix.GetGlobalColumn(0, 1), 1);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 0)(1, 1), 2.0);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 1)(0, 0), 6.0);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 1)(1, 0), 8.0);
 
-   ASSERT_EQ(matrix.RowSize(1), 1);
+   ASSERT_EQ(matrix.NumBlocksInRow(1), 1);
    EXPECT_EQ(matrix.GetGlobalColumn(1, 0), 1);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(0, 0), 5.0);
 }
@@ -191,18 +191,46 @@ TEST(SparseBlockMatrixTest, StoredRowsMayReferenceRemoteUnknownBlocks)
    // to rank 0 because matrix ownership is determined by its row.
    Array<int> offsets({0, 2, 4, 6, 8});
    Array<int> stored_rows({0, 1});
-   SparseBlockMatrix matrix(offsets, stored_rows);
+   SparseBlockMatrixLayout layout(offsets);
+   SparseBlockMatrixBuilder builder(layout, stored_rows);
    auto A12 = MakeSparseMatrix(2, 2, {{0, 1, 7.0}, {1, 0, 8.0}});
 
-   ASSERT_TRUE(matrix.StoresGlobalRow(1));
-   ASSERT_FALSE(matrix.StoresGlobalRow(2));
-   matrix.AddBlock(1, 2, *A12);
-   matrix.Finalize();
+   ASSERT_TRUE(builder.StoresGlobalRow(1));
+   ASSERT_FALSE(builder.StoresGlobalRow(2));
+   builder.AddBlock(1, 2, *A12);
+   SparseBlockMatrix matrix = builder.Finalize();
 
-   ASSERT_EQ(matrix.RowSize(1), 1);
+   ASSERT_EQ(matrix.NumBlocksInRow(1), 1);
    EXPECT_EQ(matrix.GetGlobalColumn(1, 0), 2);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(0, 1), 7.0);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(1, 0), 8.0);
+}
+
+TEST(SparseBlockMatrixTest, KeepsLayoutSeparateFromFinalizedBlockData)
+{
+   Array<int> row_offsets({0, 2, 5});
+   Array<int> col_offsets({0, 1, 5, 7});
+   SparseBlockMatrixLayout layout(row_offsets, col_offsets);
+
+   EXPECT_EQ(layout.NumBlockRows(), 2);
+   EXPECT_EQ(layout.NumBlockCols(), 3);
+   EXPECT_EQ(layout.NumScalarRows(), 5);
+   EXPECT_EQ(layout.NumScalarCols(), 7);
+   EXPECT_EQ(layout.BlockRowStart(1), 2);
+   EXPECT_EQ(layout.BlockColStart(2), 5);
+   EXPECT_EQ(layout.BlockRowSize(1), 3);
+   EXPECT_EQ(layout.BlockColSize(2), 2);
+
+   Array<int> stored_rows(1);
+   stored_rows[0] = 1;
+   SparseBlockMatrixBuilder builder(layout, stored_rows);
+   auto A12 = MakeSparseMatrix(3, 2, {{2, 1, 9.0}});
+   builder.AddBlock(1, 2, *A12);
+   SparseBlockMatrix matrix = builder.Finalize();
+
+   EXPECT_EQ(matrix.GetGlobalRow(0), 1);
+   EXPECT_EQ(matrix.GetGlobalColumn(0, 0), 2);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 0)(2, 1), 9.0);
 }
 
 // TODO: add more tests from sketches/yaml_example.cpp.

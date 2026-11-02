@@ -136,59 +136,96 @@ void PrintVector(const CAROM::Vector &vec,
 namespace mfem
 {
 
-SparseBlockMatrix::SparseBlockMatrix(const Array<int> &global_offsets,
-                                     const Array<int> &stored_global_rows)
-   : SparseBlockMatrix(global_offsets, global_offsets, stored_global_rows)
+void SparseBlockMatrixLayout::ValidateOffsets(const Array<int> &offsets,
+                                              const char *description)
+{
+   MFEM_VERIFY(offsets.Size() > 1, description);
+   MFEM_VERIFY(offsets[0] == 0, "Global block offsets must start at zero");
+   for (int i = 0; i + 1 < offsets.Size(); i++)
+      MFEM_VERIFY(offsets[i] < offsets[i + 1], description);
+}
+
+SparseBlockMatrixLayout::SparseBlockMatrixLayout(const Array<int> &global_offsets)
+   : SparseBlockMatrixLayout(global_offsets, global_offsets)
 {
 }
 
-SparseBlockMatrix::SparseBlockMatrix(const Array<int> &global_row_offsets_,
-                                     const Array<int> &global_col_offsets_,
-                                     const Array<int> &stored_global_rows)
+SparseBlockMatrixLayout::SparseBlockMatrixLayout(
+   const Array<int> &global_row_offsets_,
+   const Array<int> &global_col_offsets_)
    : global_row_offsets(global_row_offsets_),
-     global_col_offsets(global_col_offsets_),
-     global_rows(stored_global_rows),
+     global_col_offsets(global_col_offsets_)
+{
+   ValidateOffsets(global_row_offsets,
+                   "Global row block offsets must be nonempty and strictly increasing");
+   ValidateOffsets(global_col_offsets,
+                   "Global column block offsets must be nonempty and strictly increasing");
+}
+
+int SparseBlockMatrixLayout::BlockRowStart(const int global_block_row) const
+{
+   MFEM_VERIFY(global_block_row >= 0 && global_block_row < NumBlockRows(),
+               "Global block row is out of range");
+   return global_row_offsets[global_block_row];
+}
+
+int SparseBlockMatrixLayout::BlockColStart(const int global_block_col) const
+{
+   MFEM_VERIFY(global_block_col >= 0 && global_block_col < NumBlockCols(),
+               "Global block column is out of range");
+   return global_col_offsets[global_block_col];
+}
+
+int SparseBlockMatrixLayout::BlockRowSize(const int global_block_row) const
+{
+   MFEM_VERIFY(global_block_row >= 0 && global_block_row < NumBlockRows(),
+               "Global block row is out of range");
+   return global_row_offsets[global_block_row + 1] -
+          global_row_offsets[global_block_row];
+}
+
+int SparseBlockMatrixLayout::BlockColSize(const int global_block_col) const
+{
+   MFEM_VERIFY(global_block_col >= 0 && global_block_col < NumBlockCols(),
+               "Global block column is out of range");
+   return global_col_offsets[global_block_col + 1] -
+          global_col_offsets[global_block_col];
+}
+
+SparseBlockMatrixBuilder::SparseBlockMatrixBuilder(
+   const SparseBlockMatrixLayout &layout_,
+   const Array<int> &stored_global_rows)
+   : layout(layout_), global_rows(stored_global_rows),
      assembly_rows(stored_global_rows.Size())
 {
-   MFEM_VERIFY(global_row_offsets.Size() > 1 && global_col_offsets.Size() > 1,
-               "Global block offsets must not be empty");
-   MFEM_VERIFY(global_row_offsets[0] == 0 && global_col_offsets[0] == 0,
-               "Global block offsets must start at zero");
-   for (int i = 0; i + 1 < global_row_offsets.Size(); i++)
-      MFEM_VERIFY(global_row_offsets[i] < global_row_offsets[i + 1],
-                  "Global row block offsets must be strictly increasing");
-   for (int i = 0; i + 1 < global_col_offsets.Size(); i++)
-      MFEM_VERIFY(global_col_offsets[i] < global_col_offsets[i + 1],
-                  "Global column block offsets must be strictly increasing");
    for (int i = 0; i < global_rows.Size(); i++)
    {
       const int row = global_rows[i];
-      MFEM_VERIFY(row >= 0 && row + 1 < global_row_offsets.Size(),
+      MFEM_VERIFY(row >= 0 && row < layout.NumBlockRows(),
                   "Stored global block row is out of range");
       MFEM_VERIFY(global_to_local_row.emplace(row, i).second,
                   "Stored global block rows must be unique");
    }
 }
 
-bool SparseBlockMatrix::StoresGlobalRow(const int global_row) const
+bool SparseBlockMatrixBuilder::StoresGlobalRow(const int global_row) const
 {
    return global_to_local_row.count(global_row) > 0;
 }
 
-void SparseBlockMatrix::AddBlock(const int global_row, const int global_col,
-                                 const SparseMatrix &block)
+void SparseBlockMatrixBuilder::AddBlock(const int global_row,
+                                        const int global_col,
+                                        const SparseMatrix &block)
 {
-   MFEM_VERIFY(!finalized, "Cannot add blocks after finalization");
+   MFEM_VERIFY(!consumed, "Cannot add blocks after the builder is finalized");
    const auto row = global_to_local_row.find(global_row);
    MFEM_VERIFY(row != global_to_local_row.end(),
                "Cannot add a block to a row that is not stored");
-   MFEM_VERIFY(global_col >= 0 && global_col + 1 < global_col_offsets.Size(),
+   MFEM_VERIFY(global_col >= 0 && global_col < layout.NumBlockCols(),
                "Global block column is out of range");
 
-   const int row_size = global_row_offsets[global_row + 1] -
-                        global_row_offsets[global_row];
-   const int col_size = global_col_offsets[global_col + 1] -
-                        global_col_offsets[global_col];
+   const int row_size = layout.BlockRowSize(global_row);
+   const int col_size = layout.BlockColSize(global_col);
    MFEM_VERIFY(block.NumRows() == row_size && block.NumCols() == col_size,
                "Block dimensions do not match the global offsets");
 
@@ -200,10 +237,11 @@ void SparseBlockMatrix::AddBlock(const int global_row, const int global_col,
    *entry->second += block;
 }
 
-void SparseBlockMatrix::Finalize()
+SparseBlockMatrix SparseBlockMatrixBuilder::Finalize()
 {
-   MFEM_VERIFY(!finalized, "SparseBlockMatrix is already finalized");
+   MFEM_VERIFY(!consumed, "SparseBlockMatrixBuilder is already finalized");
 
+   Array<int> row_starts;
    row_starts.SetSize(global_rows.Size() + 1);
    row_starts[0] = 0;
    for (int row = 0; row < global_rows.Size(); row++)
@@ -215,7 +253,8 @@ void SparseBlockMatrix::Finalize()
       row_starts[row + 1] = row_starts[row] + static_cast<int>(row_entries);
    }
 
-   global_columns.SetSize(row_starts.Last());
+   Array<int> global_columns(row_starts.Last());
+   std::vector<std::unique_ptr<SparseMatrix>> blocks;
    blocks.reserve(row_starts.Last());
    int entry_index = 0;
    for (auto &row : assembly_rows)
@@ -229,7 +268,19 @@ void SparseBlockMatrix::Finalize()
       row.clear();
    }
    assembly_rows.clear();
-   finalized = true;
+   consumed = true;
+
+   return SparseBlockMatrix(global_rows, row_starts, global_columns,
+                            std::move(blocks));
+}
+
+SparseBlockMatrix::SparseBlockMatrix(
+   const Array<int> &global_rows_, const Array<int> &row_starts_,
+   const Array<int> &global_columns_,
+   std::vector<std::unique_ptr<SparseMatrix>> &&blocks_)
+   : global_rows(global_rows_), row_starts(row_starts_),
+     global_columns(global_columns_), blocks(std::move(blocks_))
+{
 }
 
 int SparseBlockMatrix::GetGlobalRow(const int local_row) const
@@ -239,9 +290,8 @@ int SparseBlockMatrix::GetGlobalRow(const int local_row) const
    return global_rows[local_row];
 }
 
-int SparseBlockMatrix::RowSize(const int local_row) const
+int SparseBlockMatrix::NumBlocksInRow(const int local_row) const
 {
-   MFEM_VERIFY(finalized, "SparseBlockMatrix must be finalized before access");
    MFEM_VERIFY(local_row >= 0 && local_row < global_rows.Size(),
                "Local block row is out of range");
    return row_starts[local_row + 1] - row_starts[local_row];
@@ -250,7 +300,7 @@ int SparseBlockMatrix::RowSize(const int local_row) const
 int SparseBlockMatrix::GetGlobalColumn(const int local_row,
                                        const int row_entry) const
 {
-   MFEM_VERIFY(row_entry >= 0 && row_entry < RowSize(local_row),
+   MFEM_VERIFY(row_entry >= 0 && row_entry < NumBlocksInRow(local_row),
                "Block row entry is out of range");
    return global_columns[row_starts[local_row] + row_entry];
 }
@@ -258,7 +308,7 @@ int SparseBlockMatrix::GetGlobalColumn(const int local_row,
 const SparseMatrix &SparseBlockMatrix::GetBlock(const int local_row,
                                                 const int row_entry) const
 {
-   MFEM_VERIFY(row_entry >= 0 && row_entry < RowSize(local_row),
+   MFEM_VERIFY(row_entry >= 0 && row_entry < NumBlocksInRow(local_row),
                "Block row entry is out of range");
    return *blocks[row_starts[local_row] + row_entry];
 }

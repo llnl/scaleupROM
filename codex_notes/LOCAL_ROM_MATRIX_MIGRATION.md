@@ -206,18 +206,14 @@ initialization rather than corrupting later assembly.
 Status: core container and unit tests implemented; solver wiring intentionally
 deferred.
 
-The initial `LocalROMMatrix` shadow-assembly prototype was replaced with
-`SparseBlockMatrix`, a backend-neutral linear-algebra container. Production ROM
-assembly was restored to its original single-`BlockMatrix` interface so that
-testing infrastructure and nullable dual-matrix arguments do not become part of
-the solver design.
-
-`SparseBlockMatrix` has two phases:
-
-1. During assembly, each stored global block row owns a sorted map from global
-   block-column ID to an accumulating `SparseMatrix` block.
-2. `Finalize()` compresses those maps into block-CSR-like arrays: row starts,
-   global column IDs, and contiguous row-oriented block storage.
+The initial `LocalROMMatrix` shadow-assembly prototype was replaced with three
+backend-neutral linear-algebra types. `SparseBlockMatrixLayout` owns the block
+row/column offsets and translates block IDs to scalar starts and sizes.
+`SparseBlockMatrixBuilder` accumulates contributions in sorted maps keyed by
+global block-column ID. Its `Finalize()` method produces an immutable
+`SparseBlockMatrix` containing only block-CSR-like row starts, global column
+IDs, and contiguous row-oriented block storage. Production ROM assembly remains
+on its original single-`BlockMatrix` interface.
 
 The container supports rectangular matrices, variable block sizes,
 noncontiguous stored global rows, and columns whose vector unknowns are owned by
@@ -229,7 +225,8 @@ Focused GoogleTests in `test/test_linalg_utils.cpp` document and verify:
 
 - variable-size block identity and dimensions;
 - accumulation of repeated contributions to one block;
-- deterministic row-oriented ordering after finalization; and
+- deterministic row-oriented ordering after finalization;
+- separation of rectangular layout metadata from finalized block data; and
 - the row-ownership rule: a stored row may reference a global column whose
   input-vector unknowns are remote.
 
@@ -240,9 +237,26 @@ cd build/test
 ./test_linalg_utils --gtest_filter='SparseBlockMatrixTest.*'
 ```
 
-Both focused tests and the complete `test_linalg_utils` executable pass. Since
+All three focused tests and the complete `test_linalg_utils` executable pass. Since
 this increment does not alter solver execution, no allocation-dependent
 parallel run is required yet.
+
+### Possible pattern-reuse follow-up
+
+Keep the map-based `SparseBlockMatrixBuilder` for the initial production and
+Hypre integration. Although the component and port topology should make the
+block sparsity pattern predictable, that pattern still needs an initial
+symbolic construction pass. The builder is the simpler starting point: it
+discovers the block graph while accumulating contributions and produces the
+block-CSR arrays during `Finalize()`.
+
+If repeated matrix assembly or profiling later shows that rebuilding the block
+graph is significant, introduce a separate immutable `SparseBlockMatrixPattern`
+containing the stored global rows, row starts, and global block columns. Build
+it once from topology (or capture it from the first builder result), then reuse
+it to allocate subsequent matrices and to drive Hypre conversion without
+global-column scans. Do not add this symbolic-pattern path before the dynamic
+builder-based Hypre path is correct and measured.
 
 ### Ownership API follow-up
 
