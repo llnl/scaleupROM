@@ -649,6 +649,29 @@ void MultiBlockSolver::InitROMHandler()
    rom_handler = new MFEMROMHandler(topol_handler, var_offsets, var_names, separate_variable_basis);
    rom_handler->LoadBalanceROMBlocks(rank, nproc);
 
+   /*
+      Component-wise ROM assembly currently relies on the topology and ROM
+      load balancers assigning the same contiguous subdomain range to each
+      rank.  Make that implicit requirement explicit before the local-row
+      matrix assembly path starts depending on it.
+
+      A separate basis per variable creates multiple ROM blocks per
+      subdomain, so that case needs a more general ownership mapping and is
+      intentionally not covered by this check.
+   */
+   if ((topol_mode == TopologyHandlerMode::COMPONENT) &&
+       !separate_variable_basis)
+   {
+      const std::array<int, 2> owned_blocks = rom_handler->GetLocalBlocks();
+      MFEM_VERIFY(owned_blocks[1] - owned_blocks[0] == numSubLoc,
+                  "ROM and topology load balancers assigned different local block counts");
+      for (int m = 0; m < numSubLoc; m++)
+      {
+         MFEM_VERIFY(topol_handler->GlobalSubdomainIndex(m) == owned_blocks[0] + m,
+                     "ROM and topology load balancers assigned different block ranges");
+      }
+   }
+
    if (!(topol_mode == TopologyHandlerMode::COMPONENT))
       return;
 

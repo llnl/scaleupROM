@@ -134,6 +134,77 @@ TEST(linalg_test, Orthonormalize)
    return;
 }
 
+namespace
+{
+
+std::unique_ptr<SparseMatrix> MakeSparseMatrix(
+   const int height, const int width,
+   const std::initializer_list<std::tuple<int, int, double>> &entries)
+{
+   std::unique_ptr<SparseMatrix> matrix(new SparseMatrix(height, width));
+   for (const auto &entry : entries)
+      matrix->Set(std::get<0>(entry), std::get<1>(entry), std::get<2>(entry));
+   return matrix;
+}
+
+}
+
+TEST(SparseBlockMatrixTest, StoresVariableSizeBlocksByGlobalIdentity)
+{
+   // Three global blocks with scalar sizes 2, 1, and 2. This local matrix
+   // stores global block rows 0 and 1 only.
+   Array<int> offsets({0, 2, 3, 5});
+   Array<int> stored_rows({0, 1});
+   SparseBlockMatrix matrix(offsets, stored_rows);
+
+   auto A00 = MakeSparseMatrix(2, 2, {{0, 0, 1.0}, {1, 1, 2.0}});
+   auto A01 = MakeSparseMatrix(2, 1, {{0, 0, 3.0}, {1, 0, 4.0}});
+   auto A11 = MakeSparseMatrix(1, 1, {{0, 0, 5.0}});
+
+   matrix.AddBlock(0, 0, *A00);
+   matrix.AddBlock(0, 1, *A01);
+   matrix.AddBlock(0, 1, *A01); // Contributions to one block accumulate.
+   matrix.AddBlock(1, 1, *A11);
+   matrix.Finalize();
+
+   ASSERT_TRUE(matrix.Finalized());
+   ASSERT_EQ(matrix.NumStoredRows(), 2);
+   EXPECT_EQ(matrix.GetGlobalRow(0), 0);
+   EXPECT_EQ(matrix.GetGlobalRow(1), 1);
+
+   ASSERT_EQ(matrix.RowSize(0), 2);
+   EXPECT_EQ(matrix.GetGlobalColumn(0, 0), 0);
+   EXPECT_EQ(matrix.GetGlobalColumn(0, 1), 1);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 0)(1, 1), 2.0);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 1)(0, 0), 6.0);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 1)(1, 0), 8.0);
+
+   ASSERT_EQ(matrix.RowSize(1), 1);
+   EXPECT_EQ(matrix.GetGlobalColumn(1, 0), 1);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(0, 0), 5.0);
+}
+
+TEST(SparseBlockMatrixTest, StoredRowsMayReferenceRemoteUnknownBlocks)
+{
+   // Think of rows 0 and 1 as rank 0's matrix rows. Global column block 2
+   // represents input-vector unknowns owned by another rank. A12 still belongs
+   // to rank 0 because matrix ownership is determined by its row.
+   Array<int> offsets({0, 2, 4, 6, 8});
+   Array<int> stored_rows({0, 1});
+   SparseBlockMatrix matrix(offsets, stored_rows);
+   auto A12 = MakeSparseMatrix(2, 2, {{0, 1, 7.0}, {1, 0, 8.0}});
+
+   ASSERT_TRUE(matrix.StoresGlobalRow(1));
+   ASSERT_FALSE(matrix.StoresGlobalRow(2));
+   matrix.AddBlock(1, 2, *A12);
+   matrix.Finalize();
+
+   ASSERT_EQ(matrix.RowSize(1), 1);
+   EXPECT_EQ(matrix.GetGlobalColumn(1, 0), 2);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(0, 1), 7.0);
+   EXPECT_DOUBLE_EQ(matrix.GetBlock(1, 0)(1, 0), 8.0);
+}
+
 // TODO: add more tests from sketches/yaml_example.cpp.
 
 int main(int argc, char* argv[])
