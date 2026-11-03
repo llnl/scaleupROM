@@ -147,6 +147,29 @@ public:
    const Array<int> &ColOffsets() const { return global_col_offsets; }
 };
 
+/** Rank-contiguous ownership of the global block rows in a layout. */
+class SparseBlockMatrixDistribution
+{
+private:
+   const SparseBlockMatrixLayout &layout;
+   Array<int> block_starts;
+
+public:
+   SparseBlockMatrixDistribution(const SparseBlockMatrixLayout &layout_,
+                                 const Array<int> &block_starts_);
+
+   int NumRanks() const { return block_starts.Size() - 1; }
+   int FirstBlock(const int rank) const;
+   int EndBlock(const int rank) const;
+   int NumBlocks(const int rank) const;
+   int FirstScalar(const int rank) const;
+   int EndScalar(const int rank) const;
+   int NumScalars(const int rank) const;
+   int Owner(const int global_block) const;
+   bool OwnsBlock(const int rank, const int global_block) const;
+   const Array<int> &BlockStarts() const { return block_starts; }
+};
+
 class SparseBlockMatrixBuilder;
 
 /** Immutable block-CSR data with globally indexed block rows and columns. */

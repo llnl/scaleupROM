@@ -269,9 +269,21 @@ than a Poisson-specific assumption.
 
 ## Increment 3: construct Hypre from local rows
 
-Add a `CreateHypreParMatrix` overload that consumes local block rows. Compare
-the resulting diagonal CSR, off-diagonal CSR, column map, matrix action, and
-solution against the existing path on one and two ranks.
+Status: backend-neutral distribution metadata and the standalone Hypre adapter
+are implemented; production ROM assembly is not wired to them yet.
+
+`SparseBlockMatrixDistribution` describes rank-contiguous ownership of global
+block rows and their corresponding scalar ranges. `BuildHypreParMatrix` is
+isolated in `hypre_utils` and consumes only a layout, distribution, and
+finalized local-row matrix. It expands finalized sparse blocks directly into
+local scalar CSR with global columns and uses MFEM's copy-in `HypreParMatrix`
+constructor; it does not scan absent global blocks or convert blocks to dense
+matrices.
+
+The serial matrix-action test and the two-rank matrix-action test with an
+off-rank coupling both pass. Before production switchover, also compare the
+resulting diagonal CSR, off-diagonal CSR, column map, and solution against the
+existing path on one and two ranks.
 
 ## Increment 4: stop allocating the global matrix in parallel
 

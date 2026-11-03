@@ -232,6 +232,8 @@ set(scaleupROMObj_SOURCES
 
   include/linalg_utils.hpp
   src/linalg_utils.cpp
+  include/hypre_utils.hpp
+  src/hypre_utils.cpp
 
   include/rom_handler.hpp
   src/rom_handler.cpp

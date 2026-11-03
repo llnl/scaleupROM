@@ -4,6 +4,7 @@
 
 #include<gtest/gtest.h>
 #include "linalg_utils.hpp"
+#include "hypre_utils.hpp"
 #include "etc.hpp"
 #include <fstream>
 #include <iostream>
@@ -231,6 +232,105 @@ TEST(SparseBlockMatrixTest, KeepsLayoutSeparateFromFinalizedBlockData)
    EXPECT_EQ(matrix.GetGlobalRow(0), 1);
    EXPECT_EQ(matrix.GetGlobalColumn(0, 0), 2);
    EXPECT_DOUBLE_EQ(matrix.GetBlock(0, 0)(2, 1), 9.0);
+}
+
+TEST(SparseBlockMatrixTest, DescribesRankContiguousBlockOwnership)
+{
+   Array<int> offsets({0, 2, 5, 6});
+   SparseBlockMatrixLayout layout(offsets);
+   Array<int> block_starts({0, 1, 3});
+   SparseBlockMatrixDistribution distribution(layout, block_starts);
+
+   EXPECT_EQ(distribution.NumRanks(), 2);
+   EXPECT_EQ(distribution.FirstBlock(1), 1);
+   EXPECT_EQ(distribution.EndBlock(1), 3);
+   EXPECT_EQ(distribution.FirstScalar(1), 2);
+   EXPECT_EQ(distribution.EndScalar(1), 6);
+   EXPECT_EQ(distribution.NumScalars(1), 4);
+   EXPECT_EQ(distribution.Owner(0), 0);
+   EXPECT_EQ(distribution.Owner(2), 1);
+   EXPECT_TRUE(distribution.OwnsBlock(1, 2));
+   EXPECT_FALSE(distribution.OwnsBlock(0, 2));
+}
+
+TEST(SparseBlockMatrixTest, BuildsSerialHypreMatrixWithoutGlobalBlockScan)
+{
+   int nranks = 0;
+   MPI_Comm_size(MPI_COMM_WORLD, &nranks);
+   if (nranks != 1) return;
+
+   Array<int> offsets({0, 2, 3});
+   SparseBlockMatrixLayout layout(offsets);
+   Array<int> block_starts({0, 2});
+   SparseBlockMatrixDistribution distribution(layout, block_starts);
+   Array<int> stored_rows({0, 1});
+   SparseBlockMatrixBuilder builder(layout, stored_rows);
+
+   auto A00 = MakeSparseMatrix(2, 2, {{0, 0, 1.0}, {1, 1, 2.0}});
+   auto A01 = MakeSparseMatrix(2, 1, {{0, 0, 3.0}, {1, 0, 4.0}});
+   auto A10 = MakeSparseMatrix(1, 2, {{0, 0, 5.0}, {0, 1, 6.0}});
+   auto A11 = MakeSparseMatrix(1, 1, {{0, 0, 7.0}});
+   builder.AddBlock(0, 0, *A00);
+   builder.AddBlock(0, 1, *A01);
+   builder.AddBlock(1, 0, *A10);
+   builder.AddBlock(1, 1, *A11);
+   SparseBlockMatrix matrix = builder.Finalize();
+
+   std::unique_ptr<HypreParMatrix> hypre =
+      BuildHypreParMatrix(MPI_COMM_WORLD, layout, distribution, matrix);
+   Vector x(3);
+   x[0] = 1.0;
+   x[1] = 2.0;
+   x[2] = 3.0;
+   Vector y(3);
+   hypre->Mult(x, y);
+
+   EXPECT_DOUBLE_EQ(y[0], 10.0);
+   EXPECT_DOUBLE_EQ(y[1], 16.0);
+   EXPECT_DOUBLE_EQ(y[2], 38.0);
+}
+
+TEST(SparseBlockMatrixTest, BuildsDistributedHypreMatrixFromLocalBlockRows)
+{
+   int rank = 0;
+   int nranks = 0;
+   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   MPI_Comm_size(MPI_COMM_WORLD, &nranks);
+   if (nranks != 2) return;
+
+   // Interpret each scalar as a 1x1 block and distribute this global matrix by
+   // block row across two ranks:
+   //
+   //                 [ 2  1 ] [ 1 ]   [ 4 ]
+   //             A = [ 1  3 ] [ 2 ] = [ 7 ].
+   //
+   // Rank 0 stores block row [2 1], and rank 1 stores block row [1 3]. Each
+   // rank therefore owns one scalar row and one entry of the distributed x and
+   // y vectors, so its local Vector objects have size one. The off-diagonal
+   // block on each rank references the other rank's x entry; HypreParMatrix::
+   // Mult must communicate that remote value to produce local results 4 and 7.
+   Array<int> offsets({0, 1, 2});
+   SparseBlockMatrixLayout layout(offsets);
+   Array<int> block_starts({0, 1, 2});
+   SparseBlockMatrixDistribution distribution(layout, block_starts);
+   Array<int> stored_rows(1);
+   stored_rows[0] = rank;
+   SparseBlockMatrixBuilder builder(layout, stored_rows);
+
+   auto diagonal = MakeSparseMatrix(1, 1, {{0, 0, rank == 0 ? 2.0 : 3.0}});
+   auto coupling = MakeSparseMatrix(1, 1, {{0, 0, 1.0}});
+   builder.AddBlock(rank, rank, *diagonal);
+   builder.AddBlock(rank, 1 - rank, *coupling);
+   SparseBlockMatrix matrix = builder.Finalize();
+
+   std::unique_ptr<HypreParMatrix> hypre =
+      BuildHypreParMatrix(MPI_COMM_WORLD, layout, distribution, matrix);
+   Vector x(1);
+   x[0] = rank + 1.0;
+   Vector y(1);
+   hypre->Mult(x, y);
+
+   EXPECT_DOUBLE_EQ(y[0], rank == 0 ? 4.0 : 7.0);
 }
 
 // TODO: add more tests from sketches/yaml_example.cpp.

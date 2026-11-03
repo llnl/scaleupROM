@@ -4,6 +4,7 @@
 
 #include "linalg_utils.hpp"
 
+#include <algorithm>
 #include <limits>
 #include "utils/HDFDatabase.h"
 
@@ -190,6 +191,72 @@ int SparseBlockMatrixLayout::BlockColSize(const int global_block_col) const
                "Global block column is out of range");
    return global_col_offsets[global_block_col + 1] -
           global_col_offsets[global_block_col];
+}
+
+SparseBlockMatrixDistribution::SparseBlockMatrixDistribution(
+   const SparseBlockMatrixLayout &layout_, const Array<int> &block_starts_)
+   : layout(layout_), block_starts(block_starts_)
+{
+   MFEM_VERIFY(block_starts.Size() > 1,
+               "Block distribution must contain at least one rank");
+   MFEM_VERIFY(block_starts[0] == 0,
+               "Block distribution must start at global block zero");
+   for (int rank = 0; rank + 1 < block_starts.Size(); rank++)
+      MFEM_VERIFY(block_starts[rank] <= block_starts[rank + 1],
+                  "Block distribution must be nondecreasing");
+   MFEM_VERIFY(block_starts.Last() == layout.NumBlockRows(),
+               "Block distribution must cover every global block row");
+}
+
+int SparseBlockMatrixDistribution::FirstBlock(const int rank) const
+{
+   MFEM_VERIFY(rank >= 0 && rank < NumRanks(), "Rank is out of range");
+   return block_starts[rank];
+}
+
+int SparseBlockMatrixDistribution::EndBlock(const int rank) const
+{
+   MFEM_VERIFY(rank >= 0 && rank < NumRanks(), "Rank is out of range");
+   return block_starts[rank + 1];
+}
+
+int SparseBlockMatrixDistribution::NumBlocks(const int rank) const
+{
+   return EndBlock(rank) - FirstBlock(rank);
+}
+
+int SparseBlockMatrixDistribution::FirstScalar(const int rank) const
+{
+   const int block = FirstBlock(rank);
+   return block == layout.NumBlockRows() ? layout.NumScalarRows() :
+                                          layout.BlockRowStart(block);
+}
+
+int SparseBlockMatrixDistribution::EndScalar(const int rank) const
+{
+   const int block = EndBlock(rank);
+   return block == layout.NumBlockRows() ? layout.NumScalarRows() :
+                                          layout.BlockRowStart(block);
+}
+
+int SparseBlockMatrixDistribution::NumScalars(const int rank) const
+{
+   return EndScalar(rank) - FirstScalar(rank);
+}
+
+int SparseBlockMatrixDistribution::Owner(const int global_block) const
+{
+   MFEM_VERIFY(global_block >= 0 && global_block < layout.NumBlockRows(),
+               "Global block is out of range");
+   const int *begin = block_starts.GetData();
+   const int *end = begin + block_starts.Size();
+   return static_cast<int>(std::upper_bound(begin, end, global_block) - begin) - 1;
+}
+
+bool SparseBlockMatrixDistribution::OwnsBlock(const int rank,
+                                              const int global_block) const
+{
+   return global_block >= FirstBlock(rank) && global_block < EndBlock(rank);
 }
 
 SparseBlockMatrixBuilder::SparseBlockMatrixBuilder(
