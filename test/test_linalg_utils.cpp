@@ -244,9 +244,9 @@ TEST(SparseBlockMatrixTest, DescribesRankContiguousBlockOwnership)
    EXPECT_EQ(distribution.NumRanks(), 2);
    EXPECT_EQ(distribution.FirstBlock(1), 1);
    EXPECT_EQ(distribution.EndBlock(1), 3);
-   EXPECT_EQ(distribution.FirstScalar(1), 2);
-   EXPECT_EQ(distribution.EndScalar(1), 6);
-   EXPECT_EQ(distribution.NumScalars(1), 4);
+   EXPECT_EQ(distribution.FirstScalarRow(1), 2);
+   EXPECT_EQ(distribution.EndScalarRow(1), 6);
+   EXPECT_EQ(distribution.NumScalarRows(1), 4);
    EXPECT_EQ(distribution.Owner(0), 0);
    EXPECT_EQ(distribution.Owner(2), 1);
    EXPECT_TRUE(distribution.OwnsBlock(1, 2));

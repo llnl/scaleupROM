@@ -90,6 +90,7 @@ TEST(Poisson_Workflow, ComponentWiseWithDirectSolve)
    config.dict_["solver"]["direct_solve"] = true;
    config.dict_["model_reduction"]["linear_solver_type"] = "direct";
    config.dict_["model_reduction"]["linear_system_type"] = "spd";
+   config.dict_["model_reduction"]["hypre_matrix"] = "yes";
 
    printf("\nSample Generation \n\n");
 

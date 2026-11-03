@@ -467,6 +467,30 @@ void UnsteadyNSSolver::AssembleROMMat(BlockMatrix &romMat)
    }  // for (int m = 0; m < numSub; m++)
 }
 
+void UnsteadyNSSolver::AssembleROMMat(SparseBlockMatrixBuilder &builder)
+{
+   SteadyNSSolver::AssembleROMMat(builder);
+
+   assert(rom_handler->GetOrdering() == ROMOrderBy::VARIABLE);
+   rom_handler->GetBlockOffsets()->GetSubArray(0, numSub + 1, rom_u_offsets);
+   rom_mass = new BlockMatrix(rom_u_offsets);
+   rom_mass->owns_blocks = true;
+
+   for (int m = 0; m < numSub; m++)
+   {
+      const int c_type = topol_handler->GetMeshType(m);
+      Array<int> midx(1);
+      midx[0] = rom_handler->GetBlockIndex(m, 0);
+
+      MatrixBlocks mass_mat(1, 1);
+      mass_mat(0, 0) = new SparseMatrix(*(*rom_elems->mass[c_type])(0, 0));
+      AddToBlockMatrix(midx, midx, mass_mat, *rom_mass);
+
+      *mass_mat(0, 0) *= bd0 / dt;
+      AddToSparseBlockMatrix(midx, midx, mass_mat, builder);
+   }
+}
+
 void UnsteadyNSSolver::SolveROM()
 {
    assert(rom_handler->GetOrdering() == ROMOrderBy::VARIABLE);

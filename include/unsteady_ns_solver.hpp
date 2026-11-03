@@ -126,6 +126,7 @@ private:
    void SetTime(const double time);
 
    void AssembleROMMat(BlockMatrix &romMat) override;
+   void AssembleROMMat(SparseBlockMatrixBuilder &builder) override;
 
 };
 

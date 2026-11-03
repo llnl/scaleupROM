@@ -215,6 +215,10 @@ public:
    virtual void AppendReferenceBasis(const int &idx, const DenseMatrix &mat) = 0;
 
    virtual void CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int nproc) = 0;
+   virtual void CreateHypreParMatrix(
+      const SparseBlockMatrixLayout &layout,
+      const SparseBlockMatrixDistribution &distribution,
+      const SparseBlockMatrix &matrix) = 0;
    virtual void LoadBalanceROMBlocks(int rank, int nproc) = 0;
 };
 
@@ -311,6 +315,10 @@ public:
    virtual void AppendReferenceBasis(const int &idx, const DenseMatrix &mat);
 
    void CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int nproc) override;
+   void CreateHypreParMatrix(
+      const SparseBlockMatrixLayout &layout,
+      const SparseBlockMatrixDistribution &distribution,
+      const SparseBlockMatrix &matrix) override;
    void LoadBalanceROMBlocks(int rank, int nproc) override;
 
 private:

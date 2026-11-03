@@ -162,9 +162,9 @@ public:
    int FirstBlock(const int rank) const;
    int EndBlock(const int rank) const;
    int NumBlocks(const int rank) const;
-   int FirstScalar(const int rank) const;
-   int EndScalar(const int rank) const;
-   int NumScalars(const int rank) const;
+   int FirstScalarRow(const int rank) const;
+   int EndScalarRow(const int rank) const;
+   int NumScalarRows(const int rank) const;
    int Owner(const int global_block) const;
    bool OwnsBlock(const int rank, const int global_block) const;
    const Array<int> &BlockStarts() const { return block_starts; }
@@ -224,6 +224,9 @@ public:
 };
 
 void AddToBlockMatrix(const Array<int> &ridx, const Array<int> &cidx, const MatrixBlocks &mats, BlockMatrix &bmat);
+void AddToSparseBlockMatrix(const Array<int> &ridx, const Array<int> &cidx,
+                            const MatrixBlocks &mats,
+                            SparseBlockMatrixBuilder &builder);
 
 void modifiedGramSchmidt(DenseMatrix& mat);
 

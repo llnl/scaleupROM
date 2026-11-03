@@ -50,7 +50,7 @@ std::unique_ptr<HypreParMatrix> BuildHypreParMatrix(
    MFEM_VERIFY(nnz <= static_cast<size_t>(std::numeric_limits<int>::max()),
                "Local nonzero count exceeds MFEM's integer CSR range");
 
-   const int local_rows = distribution.NumScalars(rank);
+   const int local_rows = distribution.NumScalarRows(rank);
    std::vector<int> row_starts(local_rows + 1);
    std::vector<HYPRE_BigInt> global_columns(nnz);
    std::vector<double> values(nnz);
@@ -90,10 +90,10 @@ std::unique_ptr<HypreParMatrix> BuildHypreParMatrix(
                "Sparse block-to-scalar CSR conversion produced inconsistent sizes");
 
    HYPRE_BigInt row_partition[2] = {
-      distribution.FirstScalar(rank), distribution.EndScalar(rank)
+      distribution.FirstScalarRow(rank), distribution.EndScalarRow(rank)
    };
    HYPRE_BigInt col_partition[2] = {
-      distribution.FirstScalar(rank), distribution.EndScalar(rank)
+      distribution.FirstScalarRow(rank), distribution.EndScalarRow(rank)
    };
 
    return std::unique_ptr<HypreParMatrix>(new HypreParMatrix(

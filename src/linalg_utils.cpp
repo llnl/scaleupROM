@@ -225,23 +225,23 @@ int SparseBlockMatrixDistribution::NumBlocks(const int rank) const
    return EndBlock(rank) - FirstBlock(rank);
 }
 
-int SparseBlockMatrixDistribution::FirstScalar(const int rank) const
+int SparseBlockMatrixDistribution::FirstScalarRow(const int rank) const
 {
    const int block = FirstBlock(rank);
    return block == layout.NumBlockRows() ? layout.NumScalarRows() :
                                           layout.BlockRowStart(block);
 }
 
-int SparseBlockMatrixDistribution::EndScalar(const int rank) const
+int SparseBlockMatrixDistribution::EndScalarRow(const int rank) const
 {
    const int block = EndBlock(rank);
    return block == layout.NumBlockRows() ? layout.NumScalarRows() :
                                           layout.BlockRowStart(block);
 }
 
-int SparseBlockMatrixDistribution::NumScalars(const int rank) const
+int SparseBlockMatrixDistribution::NumScalarRows(const int rank) const
 {
-   return EndScalar(rank) - FirstScalar(rank);
+   return EndScalarRow(rank) - FirstScalarRow(rank);
 }
 
 int SparseBlockMatrixDistribution::Owner(const int global_block) const
@@ -408,6 +408,20 @@ void AddToBlockMatrix(const Array<int> &ridx, const Array<int> &cidx, const Matr
          
          bmat.GetBlock(ridx[i], cidx[j]) += *mats(i, j);
       }
+}
+
+void AddToSparseBlockMatrix(const Array<int> &ridx, const Array<int> &cidx,
+                            const MatrixBlocks &mats,
+                            SparseBlockMatrixBuilder &builder)
+{
+   assert(ridx.Size() == mats.nrows);
+   assert(cidx.Size() == mats.ncols);
+   for (int i = 0; i < ridx.Size(); i++)
+   {
+      if (!builder.StoresGlobalRow(ridx[i])) continue;
+      for (int j = 0; j < cidx.Size(); j++)
+         if (mats(i, j)) builder.AddBlock(ridx[i], cidx[j], *mats(i, j));
+   }
 }
 
 void modifiedGramSchmidt(DenseMatrix& mat)

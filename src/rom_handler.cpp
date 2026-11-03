@@ -5,6 +5,7 @@
 #include "etc.hpp"
 #include "input_parser.hpp"
 #include "rom_handler.hpp"
+#include "hypre_utils.hpp"
 #include "hdf5_utils.hpp"
 #include "block_smoother.hpp"
 #include "utils/mpi_utils.h"  // this is from libROM/utils.
@@ -1020,6 +1021,12 @@ void MFEMROMHandler::LoadBalanceROMBlocks(int rank, int nproc)
 
   MFEM_VERIFY(sum == gsize && bsum == num_rom_blocks, "");
 
+  // Local block ownership is established here and is needed by RHS
+  // projection and solution lifting independently of the matrix backend.
+  // The legacy Hypre assembly path also assigned this later, but the sparse
+  // block adapter intentionally bypasses that backend-specific routine.
+  num_rom_blocks_local = localNumBlocks[rank];
+
 }
 
 void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int nproc)
@@ -1227,6 +1234,29 @@ void MFEMROMHandler::CreateHypreParMatrix(BlockMatrix *input_mat, int rank, int 
   mumps->SetOperator(*romMat_hypre);
   PrintParallelProfile("rom.mumps_setup", MPI_Wtime() - profile_start,
                        localSizes[rank]);
+}
+
+void MFEMROMHandler::CreateHypreParMatrix(
+   const SparseBlockMatrixLayout &layout,
+   const SparseBlockMatrixDistribution &distribution,
+   const SparseBlockMatrix &matrix)
+{
+   const int rank = topol_handler->GetRank();
+   delete romMat_hypre;
+   romMat_hypre = BuildHypreParMatrix(MPI_COMM_WORLD, layout, distribution,
+                                      matrix).release();
+
+   hypre_start = distribution.FirstScalarRow(rank);
+   reduced_rhs_hypre.SetSize(distribution.NumScalarRows(rank));
+
+   if (linsol_type == SolverType::DIRECT)
+   {
+      delete mumps;
+      mumps = new MUMPSSolver(MPI_COMM_WORLD);
+      mumps->SetMatrixSymType(mat_type);
+      mumps->SetOperator(*romMat_hypre);
+   }
+   operator_loaded = true;
 }
 
 void MFEMROMHandler::SetRomMat(BlockMatrix *input_mat, const bool init_direct_solver)

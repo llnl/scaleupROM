@@ -271,6 +271,7 @@ public:
 
 protected:
    virtual void AssembleROMMat(BlockMatrix &romMat);
+   virtual void AssembleROMMat(SparseBlockMatrixBuilder &builder);
 };
 
 #endif

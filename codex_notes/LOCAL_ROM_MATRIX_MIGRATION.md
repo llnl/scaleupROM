@@ -12,13 +12,12 @@ test at each boundary.
   `MultiBlockSolver::InitROMHandler`, is implemented.
 - Increment 2, the generic `mfem::SparseBlockMatrix` container and its focused
   unit tests, is implemented.
-- The production ROM assembly path has **not** been changed yet. It still
-  assembles the replicated MFEM `BlockMatrix` and converts it to Hypre.
-- There is no `LocalROMMatrix`, shadow assembly, production `Verify()` hook, or
-  API taking two nullable matrix representations. Those prototype ideas were
-  deliberately removed.
-- No allocation-dependent parallel run is needed for Increment 2 because the
-  new container is not wired into a solver yet.
+- For `hypre_matrix: yes` with a non-separate basis, production ROM assembly
+  now builds local sparse rows and uses them to construct the `HypreParMatrix`.
+  The replicated MFEM `BlockMatrix` is temporarily still assembled as a
+  fallback and for serial/output capabilities.
+- Separate-variable bases remain on the established path until their logical
+  block IDs have an explicit rank-contiguous distributed numbering.
 
 The last validation completed successfully:
 
@@ -270,7 +269,8 @@ than a Poisson-specific assumption.
 ## Increment 3: construct Hypre from local rows
 
 Status: backend-neutral distribution metadata and the standalone Hypre adapter
-are implemented; production ROM assembly is not wired to them yet.
+are implemented and wired into non-separate-basis production ROM assembly when
+`hypre_matrix: yes`.
 
 `SparseBlockMatrixDistribution` describes rank-contiguous ownership of global
 block rows and their corresponding scalar ranges. `BuildHypreParMatrix` is
@@ -283,13 +283,16 @@ matrices.
 The serial matrix-action test and the two-rank matrix-action test with an
 off-rank coupling both pass. Before production switchover, also compare the
 resulting diagonal CSR, off-diagonal CSR, column map, and solution against the
-existing path on one and two ranks.
+existing path on two ranks. The serial Poisson component-ROM direct-solve
+workflow passes through the new path with relative error approximately
+`5.0e-16`.
 
 ## Increment 4: stop allocating the global matrix in parallel
 
-After equivalence tests pass, select local-row assembly for the distributed
-Hypre path. Retain the old path for serial operation and explicit global matrix
-output until those uses are handled separately.
+After two-rank production equivalence tests pass, stop assembling the replicated
+global matrix when only the distributed Hypre path is requested. Retain the old
+path for serial operation and explicit global matrix output until those uses
+are handled separately.
 
 ## Increment 5: localize port traversal
 

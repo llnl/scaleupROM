@@ -297,9 +297,35 @@ void MultiBlockSolver::AssembleROMMat()
                         MPI_Wtime() - profile_start);
 
    if (hypreAssemble)
-     {
+   {
        profile_start = MPI_Wtime();
-       rom_handler->CreateHypreParMatrix(romMat, rank, nproc);
+       if (!separate_variable_basis)
+       {
+          Array<int> local_num_blocks;
+          rom_handler->GetLocalNumBlocks(local_num_blocks);
+          Array<int> block_starts(nproc + 1);
+          block_starts[0] = 0;
+          for (int r = 0; r < nproc; r++)
+             block_starts[r + 1] = block_starts[r] + local_num_blocks[r];
+
+          SparseBlockMatrixLayout layout(*rom_block_offsets);
+          SparseBlockMatrixDistribution distribution(layout, block_starts);
+          Array<int> stored_rows(distribution.NumBlocks(rank));
+          for (int i = 0; i < stored_rows.Size(); i++)
+             stored_rows[i] = distribution.FirstBlock(rank) + i;
+
+          SparseBlockMatrixBuilder builder(layout, stored_rows);
+          AssembleROMMat(builder);
+          SparseBlockMatrix sparse_matrix = builder.Finalize();
+          rom_handler->CreateHypreParMatrix(layout, distribution, sparse_matrix);
+       }
+       else
+       {
+          // Separate-variable ownership still needs an explicit logical-to-
+          // distributed block numbering. Retain the established path until
+          // that mapping is available.
+          rom_handler->CreateHypreParMatrix(romMat, rank, nproc);
+       }
        PrintParallelProfile("rom.create_hypre_total",
                             MPI_Wtime() - profile_start);
 
@@ -307,7 +333,7 @@ void MultiBlockSolver::AssembleROMMat()
        rom_handler->GetLocalNumBlocks(localNumBlocks); // TODO: get this for FOM without depending on ROM?
 
        topol_handler->GetNeighbors(neighbors);
-     }
+   }
 }
 
 void MultiBlockSolver::AssembleROMMat(BlockMatrix &romMat)
@@ -379,6 +405,51 @@ void MultiBlockSolver::AssembleROMMat(BlockMatrix &romMat)
    PrintParallelProfile("rom.assemble_global_port_loop",
                         MPI_Wtime() - profile_start,
                         topol_handler->GetNumPorts());
+}
+
+void MultiBlockSolver::AssembleROMMat(SparseBlockMatrixBuilder &builder)
+{
+   assert(topol_mode == TopologyHandlerMode::COMPONENT);
+   assert(rom_elems);
+
+   const int ossub = topol_handler->GlobalSubdomainIndex(0);
+   for (int mm = 0; mm < numSubLoc; mm++)
+   {
+      const int m = mm + ossub;
+      const int m_global = topol_handler->GlobalSubdomainIndex(mm);
+      const int c_type = topol_handler->GetMeshType(m_global);
+      const int num_block = separate_variable_basis ? num_var : 1;
+
+      Array<int> midx(num_block);
+      for (int v = 0; v < num_block; v++)
+         midx[v] = rom_handler->GetBlockIndex(m, v);
+
+      AddToSparseBlockMatrix(midx, midx, *rom_elems->comp[c_type], builder);
+
+      Array<int> *bdr_c2g = topol_handler->GetBdrAttrComponentToGlobalMap(mm);
+      for (int b = 0; b < bdr_c2g->Size(); b++)
+      {
+         const int global_idx = global_bdr_attributes.Find((*bdr_c2g)[b]);
+         if (global_idx < 0 || !BCExistsOnBdr(global_idx) ||
+             bdr_type[global_idx] == BoundaryType::NEUMANN)
+            continue;
+         AddToSparseBlockMatrix(midx, midx,
+                                *(*(rom_elems->bdr[c_type]))[b], builder);
+      }
+   }
+
+   for (int p = 0; p < topol_handler->GetNumPorts(); p++)
+   {
+      const PortInfo *pInfo = topol_handler->GetPortInfo(p);
+      const int p_type = topol_handler->GetPortType(p);
+      const int num_block = separate_variable_basis ? num_var : 1;
+      Array<int> midx(0);
+      for (int v = 0; v < num_block; v++)
+         midx.Append(rom_handler->GetBlockIndex(pInfo->Mesh1, v));
+      for (int v = 0; v < num_block; v++)
+         midx.Append(rom_handler->GetBlockIndex(pInfo->Mesh2, v));
+      AddToSparseBlockMatrix(midx, midx, *rom_elems->port[p_type], builder);
+   }
 }
 
 void MultiBlockSolver::InitVisualization(const std::string& output_path)
