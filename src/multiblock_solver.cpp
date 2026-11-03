@@ -278,27 +278,40 @@ void MultiBlockSolver::BuildROMLinElems()
 
 void MultiBlockSolver::AssembleROMMat()
 {
-   double profile_start = MPI_Wtime();
    const Array<int> *rom_block_offsets = rom_handler->GetBlockOffsets();
-   BlockMatrix *romMat = new BlockMatrix(*rom_block_offsets);
-   romMat->owns_blocks = true;
-
-   AssembleROMMat(*romMat);
-   PrintParallelProfile("rom.block_assembly", MPI_Wtime() - profile_start,
-                        numSubLoc);
-
-   profile_start = MPI_Wtime();
-   romMat->Finalize();
-   PrintParallelProfile("rom.block_finalize", MPI_Wtime() - profile_start);
    const bool hypreAssemble = rom_handler->HypreAssemble();
-   profile_start = MPI_Wtime();
-   rom_handler->SetRomMat(romMat, !hypreAssemble);
-   PrintParallelProfile("rom.set_matrix_monolithic",
-                        MPI_Wtime() - profile_start);
+   const bool save_linear_system = config.GetOption<bool>(
+      "model_reduction/save_linear_system/enabled", false);
+
+   // The backend-neutral local-row path does not need MFEM's BlockMatrix,
+   // whose block-pointer table is dense in the global number of blocks.
+   // Retain that representation only for paths that still consume it or when
+   // the user explicitly requests global matrix output.
+   const bool needs_block_matrix =
+      !hypreAssemble || separate_variable_basis || save_linear_system;
+   BlockMatrix *romMat = NULL;
+   if (needs_block_matrix)
+   {
+      double profile_start = MPI_Wtime();
+      romMat = new BlockMatrix(*rom_block_offsets);
+      romMat->owns_blocks = true;
+      AssembleROMMat(*romMat);
+      PrintParallelProfile("rom.block_assembly", MPI_Wtime() - profile_start,
+                           numSubLoc);
+
+      profile_start = MPI_Wtime();
+      romMat->Finalize();
+      PrintParallelProfile("rom.block_finalize", MPI_Wtime() - profile_start);
+
+      profile_start = MPI_Wtime();
+      rom_handler->SetRomMat(romMat, !hypreAssemble);
+      PrintParallelProfile("rom.set_matrix_monolithic",
+                           MPI_Wtime() - profile_start);
+   }
 
    if (hypreAssemble)
    {
-       profile_start = MPI_Wtime();
+       double profile_start = MPI_Wtime();
        if (!separate_variable_basis)
        {
           Array<int> local_num_blocks;
@@ -315,8 +328,15 @@ void MultiBlockSolver::AssembleROMMat()
              stored_rows[i] = distribution.FirstBlock(rank) + i;
 
           SparseBlockMatrixBuilder builder(layout, stored_rows);
+          const double assembly_start = MPI_Wtime();
           AssembleROMMat(builder);
+          PrintParallelProfile("rom.block_assembly",
+                               MPI_Wtime() - assembly_start, numSubLoc);
+
+          const double finalize_start = MPI_Wtime();
           SparseBlockMatrix sparse_matrix = builder.Finalize();
+          PrintParallelProfile("rom.block_finalize",
+                               MPI_Wtime() - finalize_start);
           rom_handler->CreateHypreParMatrix(layout, distribution, sparse_matrix);
        }
        else
@@ -324,6 +344,7 @@ void MultiBlockSolver::AssembleROMMat()
           // Separate-variable ownership still needs an explicit logical-to-
           // distributed block numbering. Retain the established path until
           // that mapping is available.
+          assert(romMat);
           rom_handler->CreateHypreParMatrix(romMat, rank, nproc);
        }
        PrintParallelProfile("rom.create_hypre_total",

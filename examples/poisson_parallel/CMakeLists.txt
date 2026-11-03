@@ -14,6 +14,7 @@ file(COPY run_workflow.sh DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_paral
 file(COPY generate_benchmark.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY generate_structured_benchmark.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY plot_benchmarks.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
+file(COPY plot_weak_comparison.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY profile_benchmarks.py DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 file(COPY benchmarks DESTINATION ${CMAKE_BINARY_DIR}/examples/poisson_parallel)
 

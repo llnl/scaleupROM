@@ -14,8 +14,9 @@ test at each boundary.
   unit tests, is implemented.
 - For `hypre_matrix: yes` with a non-separate basis, production ROM assembly
   now builds local sparse rows and uses them to construct the `HypreParMatrix`.
-  The replicated MFEM `BlockMatrix` is temporarily still assembled as a
-  fallback and for serial/output capabilities.
+  It no longer allocates or assembles the replicated MFEM `BlockMatrix` unless
+  full linear-system output is explicitly requested. Serial/non-Hypre and
+  separate-variable cases retain the established representation.
 - Separate-variable bases remain on the established path until their logical
   block IDs have an explicit rank-contiguous distributed numbering.
 
@@ -211,8 +212,8 @@ row/column offsets and translates block IDs to scalar starts and sizes.
 `SparseBlockMatrixBuilder` accumulates contributions in sorted maps keyed by
 global block-column ID. Its `Finalize()` method produces an immutable
 `SparseBlockMatrix` containing only block-CSR-like row starts, global column
-IDs, and contiguous row-oriented block storage. Production ROM assembly remains
-on its original single-`BlockMatrix` interface.
+IDs, and contiguous row-oriented block storage. Production non-separated Hypre
+assembly now uses this interface directly.
 
 The container supports rectangular matrices, variable block sizes,
 noncontiguous stored global rows, and columns whose vector unknowns are owned by

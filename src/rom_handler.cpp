@@ -335,9 +335,6 @@ MFEMROMHandler::MFEMROMHandler(
    const std::vector<std::string> &var_names, const bool separate_variable_basis)
    : ROMHandlerBase(input_topol, input_var_offsets, var_names, separate_variable_basis)
 {
-   romMat = new BlockMatrix(rom_block_offsets);
-   romMat->owns_blocks = true;
-
    std::string solver_type_str = config.GetOption<std::string>("model_reduction/linear_solver_type", "cg");
    if (solver_type_str == "direct")       linsol_type = MFEMROMHandler::SolverType::DIRECT;
    else if (solver_type_str == "cg")      linsol_type = MFEMROMHandler::SolverType::CG;
@@ -422,6 +419,11 @@ void MFEMROMHandler::ProjectOperatorOnReducedBasis(const Array2D<Operator*> &mat
 {
    assert(mats.NumRows() == num_rom_blocks);
    assert(mats.NumCols() == num_rom_blocks);
+   if (!romMat)
+   {
+      romMat = new BlockMatrix(rom_block_offsets);
+      romMat->owns_blocks = true;
+   }
    assert(romMat->NumRowBlocks() == num_rom_blocks);
    assert(romMat->NumColBlocks() == num_rom_blocks);
    assert(basis_loaded);
